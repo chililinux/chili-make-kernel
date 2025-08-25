@@ -264,9 +264,10 @@ sh_get_real_user() {
 
 post_install() {
 	msg "Initializing system installation and configuration..."
-	sh_copy_user_etc_usr_opt_files
+  #sh_copy_user_etc_usr_opt_files
 
  if [[ -n "$user_home" ]]; then
+    msg "Copying files and directories from package..."
     # Garante a pasta destino
     install -dm755 "$user_home/$pkgname/build"
     # Copia o conteúdo inteiro de /usr/share/$pkgname/build para o home
