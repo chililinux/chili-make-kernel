@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # shellcheck shell=bash disable=SC1091,SC2039,SC2166
 #
-#  rmake-kernel
+#  chili-rmake-kernel
 #  Created: 2025/08/24 - 14:01
 #  Altered: 2025/08/24 - 14:01
 #
@@ -32,7 +32,7 @@
 ##############################################################################
 #export LANGUAGE=pt_BR
 export TEXTDOMAINDIR=/usr/share/locale
-export TEXTDOMAIN=rmake-kernel
+export TEXTDOMAIN=chili-rmake-kernel
 
 # ======================
 # Colors
