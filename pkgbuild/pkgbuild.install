@@ -76,7 +76,7 @@ declare IS_UPGRADE=false
 declare IS_DBLOCK=false
 declare IS_METAPKG=false
 declare DM='lightdm'
-declare WM='pkgname'
+declare WM='rmake-kernel'
 declare pkgname=chili-"${WM}"
 declare servicesToEnable=()
 declare servicesToDisable=()
@@ -265,6 +265,18 @@ sh_get_real_user() {
 post_install() {
 	msg "Initializing system installation and configuration..."
 	sh_copy_user_etc_usr_opt_files
+
+ if [[ -n "$user_home" ]]; then
+    # Garante a pasta destino
+    install -dm755 "$user_home/$pkgname/build"
+    # Copia o conteúdo inteiro de /usr/share/$pkgname/build para o home
+    shopt -s dotglob
+    cp -a /usr/share/$pkgname/build/* "$user_home/$pkgname/build/"
+    shopt -u dotglob
+    # Ajusta dono dos arquivos para o usuário real
+    chown -R "$SUDO_USER:$SUDO_USER" "$user_home/$pkgname"
+  fi
+
 	sh_load_optdepends
 
 	[[ -e /etc/environment ]] && source /etc/environment

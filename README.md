@@ -1,3 +1,3 @@
-# chili-pkgbuild-template
+# chili-rmake-kernel
 
-Template for Chili Linux packages
+Suite de scripts para construção automatica de kernel Linux customizado
