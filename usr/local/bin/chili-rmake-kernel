@@ -5,6 +5,7 @@
 #  chili-rmake-kernel
 #  Created: 2025/08/24 - 14:01
 #  Altered: 2025/08/24 - 14:01
+#  Updated: seg 25 ago 2025 10:15:47 -04
 #
 #  Copyright (c) 2019-2025, Vilmar Catafesta <vcatafesta@gmail.com>
 #                2019-2025, ChiliLinux Team <github.com/chililinux>
@@ -284,6 +285,10 @@ print_done() {
 	echo -e "${green}${PREFIX:+$PREFIX }✔ $msg (tempo real: ${sec}s)${reset}"
 	echo
 }
+print_ok() {
+	local msg="$1"
+	echo -e "${green}${PREFIX:+$PREFIX }✔ ${msg}${reset}"
+}
 print_fail() {
 	local msg="$1"
 	echo -e "${RED}${PREFIX:+$PREFIX }✖ $msg${reset}"
@@ -329,11 +334,39 @@ patch_zram_block_shift() {
   }' "$file"
 }
 
+sh_wget_kernel() {
+  local KERNEL="${srcname}.tar.xz"
+  local major=$(echo "$KERNEL" | sed -E 's/^linux-([0-9]+).*/\1/')  # Extrai a versão principal (ex: 6 -> v6.x)
+  local URL="https://cdn.kernel.org/pub/linux/kernel/v${major}.x/$KERNEL"
+
+  if [[ ! -f "${localdir}/${KERNEL}" ]]; then
+    print_warn "Kernel $KERNEL não encontrado em ${localdir}, baixando..."
+    if $VERBOSE; then
+      run_cmd wget --continue "$URL" -O "${localdir}/${KERNEL}"
+    else
+      run_cmd wget --quiet --continue "$URL" -O "${localdir}/${KERNEL}"
+    fi
+  else
+    print_ok "Kernel $KERNEL já está no diretório atual."
+  fi
+
+  # testando se existe agora
+  if [[ ! -f "${localdir}/${KERNEL}" ]]; then
+    return 1
+  fi
+  return 0
+}
+
 prepare() {
 	local start=$SECONDS
 
 	PREFIX="[PREPARE]"
 	print_title "Preparando kernel ($ARCH)" "1 min"
+
+  if ! sh_wget_kernel; then
+    die "Kernel source $localdir/${srcname}.tar.xz não encontrado em $localdir"
+    exit 1
+  fi
 
 	run_cmd sudo rm -rfv "$builddir"
 	run_cmd mkdir -p "$builddir"
