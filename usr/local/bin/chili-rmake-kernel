@@ -610,10 +610,7 @@ install_headers() {
 	# Symlink final
 	print_step "Symlink final"
 	run_cmd mkdir -p "$pkgdir_headers/usr/src"
-
-	run_cmd ln -sfrv "$dst_build" "$pkgdir_headers/usr/src/$pkgbase"
 	run_cmd ln -sfrv "$dst_build" "$pkgdir_headers/usr/src/$pkgbase_headers"
-
 
   # Remover todos os .gitignore dentro do diretório de build
   run_cmd find "$dst_build" -type f -name ".gitignore" -delete
