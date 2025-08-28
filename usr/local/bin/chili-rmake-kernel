@@ -5,7 +5,7 @@
 #  chili-rmake-kernel
 #  Created: 2025/08/24 - 14:01
 #  Altered: 2025/08/24 - 14:01
-#  Updated: seg 25 ago 2025 10:15:47 -04
+#  Updated: qui 28 ago 2025 13:00:22 -04
 #
 #  Copyright (c) 2019-2025, Vilmar Catafesta <vcatafesta@gmail.com>
 #                2019-2025, ChiliLinux Team <github.com/chililinux>
@@ -201,7 +201,7 @@ choose_config() {
   local sep="\xe2\x94\x82"
   local xconfig
 
-  mapfile -t ARRAY <<<"$(find . -iname 'config-[0-9]*')"
+  mapfile -t ARRAY <<<"$(find . -maxdepth 1 -type f -iname 'config-[0-9]*')"
   for key in "${ARRAY[@]}"; do
     filename=${key##*/}
     array+=("$filename" "$(printf "$sep%-s" "$(file "$key")")")
@@ -391,8 +391,8 @@ prepare() {
 	#	run_cmd make ARCH="$ARCH" olddefconfig
 	run_cmd make olddefconfig
 
-  cd "$builddir/$srcname"
-  fix_kernel_doc
+  #cd "$builddir/$srcname"
+  #fix_kernel_doc
 
   cd "$builddir/$srcname"
   patch_zram_block_shift
@@ -437,7 +437,7 @@ install_kernel() {
 	local vmlinuz_boot="vmlinuz-$version"
 
 	run_cmd sudo rm -rvf "$pkgdir_kernel"
-	run_cmd mkdir -pv "$pkgdir_kernel"
+	run_cmd mkdir -p "$pkgdir_kernel"
 
 	cd "$builddir/$srcname"
 	mkdir -p "$modulesdir"
@@ -491,7 +491,7 @@ install_headers() {
 	print_title "Instalando headers e scripts de build" "5 min"
 
 	# Cria diretório de destino
-	mkdir -pv "$dst_build"
+	mkdir -p "$dst_build"
 
 	# Arquivos principais de build
 	print_step "Copiando arquivos principais (.config, Makefile, Module.symvers, etc)"
