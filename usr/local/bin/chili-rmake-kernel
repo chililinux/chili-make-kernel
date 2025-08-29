@@ -231,7 +231,7 @@ choose_config() {
 choose_version_type() {
   local array=()
   local ARRAY=("default" "versioned")
-  local DESC=("vmlinuz-linux-chili" "vmlinuz-$version")
+  local DESC=("vmlinuz-chili-linux" "vmlinuz-$version")
   local sep="\xe2\x94\x82"
   local xversion
   local nc=0
@@ -858,7 +858,7 @@ install_package() {
 
   if ! $versioned; then
     print_step "[*] Ajustando arquivos para versão 'default'..."
-    run_cmd mv -fv "$package_dir/modules/boot/vmlinuz-$version" "$package_dir/modules/boot/vmlinuz-linux-chili"
+    run_cmd mv -fv "$package_dir/modules/boot/vmlinuz-$version" "$package_dir/modules/boot/vmlinuz-chili-linux"
 
     print_step "[*] Removendo $package_dir/modules/etc/mkinitcpio.d/chili-$version"
     run_cmd rm -fv "$package_dir/modules/etc/mkinitcpio.d/chili-$version.preset"
