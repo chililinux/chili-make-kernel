@@ -926,13 +926,13 @@ EOF
 # ======================
 # Fluxo principal
 # ======================
-#[[ $DO_PREPARE ]] && prepare
-#[[ $DO_BUILD ]] && build
-#[[ $DO_BUILD_DOCS ]] && build_docs
-#[[ $DO_INSTALL_KERNEL ]] && install_kernel
-#[[ $DO_INSTALL_HEADERS ]] && install_headers
-#[[ $DO_SLIM_MODULES ]] && slim_modules
-#[[ $DO_INSTALL_DOCS ]] && install_docs
+[[ $DO_PREPARE ]] && prepare
+[[ $DO_BUILD ]] && build
+[[ $DO_BUILD_DOCS ]] && build_docs
+[[ $DO_INSTALL_KERNEL ]] && install_kernel
+[[ $DO_INSTALL_HEADERS ]] && install_headers
+[[ $DO_SLIM_MODULES ]] && slim_modules
+[[ $DO_INSTALL_DOCS ]] && install_docs
 [[ $DO_CREATE_MKINITCPIO ]] && create_mkinitcpio_preset
 [[ $DO_CREATE_HOOK ]] && create_hook
 [[ $DO_PACKAGE ]] && install_package
