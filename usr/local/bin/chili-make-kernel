@@ -5,7 +5,7 @@
 #  chili-make-kernel
 #  Created: 2025/08/24 - 14:01
 #  Altered: 2025/08/24 - 14:01
-#  Updated: qui 28 ago 2025 13:00:22 -04
+#  Updated: sáb 21 fev 2026 07:13:28 -04
 #
 #  Copyright (c) 2019-2025, Vilmar Catafesta <vcatafesta@gmail.com>
 #                2019-2025, ChiliLinux Team <github.com/chililinux>
@@ -146,6 +146,14 @@ DO_PACKAGE=true
 
 [[ $COLOR -eq 0 ]] && RED="" GREEN="" YELLOW="" CYAN="" RESET=""
 
+debug() {
+	#dialog
+	whiptail --fb --clear --backtitle "[debug]$0" --title "[debug]$0" --yesno "${*}\n" 0 40
+	local result="$?"
+	((result)) && exit "$result"
+	return "$result"
+}
+
 # ======================
 # Usage
 # ======================
@@ -193,76 +201,80 @@ while [[ $# -gt 0 ]]; do
 done
 
 die() {
-  printf "${red}${CROSS} ${red}fatal: %s\n${reset}" "$*"
-  exit 1
+	printf "${red}${CROSS} ${red}fatal: %s\n${reset}" "$*"
+	exit 1
 }
 
 choose_config() {
-  local array=()
-  local ARRAY=()
-  local sep="\xe2\x94\x82"
-  local xconfig
+	local array=()
+	local ARRAY=()
+	local sep="\xe2\x94\x82"
+	local xconfig
 
-  mapfile -t ARRAY <<<"$(find . -maxdepth 1 -type f -iname 'config-[0-9]*')"
-  for key in "${ARRAY[@]}"; do
-    filename=${key##*/}
-    array+=("$filename" "$(printf "$sep%-s" "$(file "$key")")")
-  done
-  xconfig=$(dialog \
-    --default-item '' \
-    --backtitle "Chili Make Kernel - Seleção de Config" \
-    --title "Escolha um Config" \
-    --stdout \
-    --colors \
-    --menu "Configs's in $PWD" \
-    00 00 00 \
-    "${array[@]}")
+   mapfile -t ARRAY < <(find . -maxdepth 1 -type f -iname 'config-[0-9]*')
+	if ((${#ARRAY[@]} == 0)); then
+		die "Nenhum arquivo de configuração encontrado"
+	fi
 
-  exit_status=$?
-  case $exit_status in
-    "$D_ESC" | "$D_CANCEL")
-    return 1
-    ;;
-  esac
-  version="${xconfig#config-}"
-  echo "${version}"
+	for key in "${ARRAY[@]}"; do
+		filename=${key##*/}
+		array+=("$filename" "$(printf "$sep%-s" "$(file "$key")")")
+	done
+	xconfig=$(dialog \
+		--default-item '' \
+		--backtitle "Chili Make Kernel - Seleção de Config" \
+		--title "Escolha um Config" \
+		--stdout \
+		--colors \
+		--menu "Configs's in $PWD" \
+		20 00 00 \
+		"${array[@]}")
+
+	exit_status=$?
+	case $exit_status in
+	"$D_ESC" | "$D_CANCEL")
+		return 1
+		;;
+	esac
+	version="${xconfig#config-}"
+	echo "${version}"
 }
 
 choose_version_type() {
-  local array=()
-  local ARRAY=("default" "versioned")
-  local DESC=("vmlinuz-chili-linux" "vmlinuz-$version")
-  local sep="\xe2\x94\x82"
-  local xversion
-  local nc=0
+	local array=()
+	local ARRAY=("default" "versioned")
+	local DESC=("vmlinuz-chili-linux" "vmlinuz-$version")
+	local sep="\xe2\x94\x82"
+	local xversion
+	local nc=0
 
-  for key in "${ARRAY[@]}"; do
-    filename=${key##*/}
-    array+=("$filename" "$(printf "$sep%-s" "${DESC[nc]}")")
-    ((++nc))
-  done
-  xversion=$(dialog \
-    --default-item '' \
-    --backtitle "Chili Make Kernel - Seleção de verson" \
-    --title "Escolha um tipo" \
-    --stdout \
-    --colors \
-    --menu "Tipos" \
-    00 00 00 \
-    "${array[@]}")
+	for key in "${ARRAY[@]}"; do
+		filename=${key##*/}
+		array+=("$filename" "$(printf "$sep%-s" "${DESC[nc]}")")
+		((++nc))
+	done
+	xversion=$(dialog \
+		--default-item '' \
+		--backtitle "Chili Make Kernel - Seleção de verson" \
+		--title "Escolha um tipo" \
+		--stdout \
+		--colors \
+		--menu "Tipos" \
+		00 00 00 \
+		"${array[@]}")
 
-  exit_status=$?
-  case $exit_status in
-    "$D_ESC" | "$D_CANCEL")
-    return 1
-    ;;
-  esac
-  version_type="${xversion}"
-  case $version_type in
-    default) versioned=false;;
-    versioned) versioned=true;;
-  esac
-  echo "${version_type}"
+	exit_status=$?
+	case $exit_status in
+	"$D_ESC" | "$D_CANCEL")
+		return 1
+		;;
+	esac
+	version_type="${xversion}"
+	case $version_type in
+	default) versioned=false ;;
+	versioned) versioned=true ;;
+	esac
+	echo "${version_type}"
 }
 
 # ======================
@@ -291,6 +303,7 @@ mkdir -p "$builddir" "$pkgdir_kernel" "$pkgdir_headers" "$pkgdir_docs"
 # ======================
 # Helpers
 # ======================
+
 run_cmd() {
 	#	print_step "running: $*" "${black}"
 	if $VERBOSE; then
@@ -344,58 +357,58 @@ print_warn() {
 # ======================
 
 fix_kernel_doc() {
-  local kdoc="$builddir/$srcname/scripts/kernel-doc"
+	local kdoc="$builddir/$srcname/scripts/kernel-doc"
 
-  print_step "Locaizando arquivo kernel-doc em Perl para correção"
+	print_step "Locaizando arquivo kernel-doc em Perl para correção"
 
-  # só segue se existir
-  [[ -f "$kdoc" ]] || {
-    print_warn "kernel-doc não encontrado, nada a fazer"
-    return 0
-  }
+	# só segue se existir
+	[[ -f "$kdoc" ]] || {
+		print_warn "kernel-doc não encontrado, nada a fazer"
+		return 0
+	}
 
-  # testa se é Perl (shebang ou conteúdo)
-  if head -n1 "$kdoc" | grep -q perl; then
-    print_step "Corrigindo precedence bug no kernel-doc (Perl)"
-    # Corrige todos os casos de "! $foo =~ regex" para "! ( $foo =~ regex )"
-    run_cmd sed -i -E 's/!\s*\$([A-Za-z0-9_]+)\s*=~/!(\$\1 =~/g' "$kdoc"
-    return 0
-  else
-    print_warn "kernel-doc é Python, nada a fazer"
-  fi
+	# testa se é Perl (shebang ou conteúdo)
+	if head -n1 "$kdoc" | grep -q perl; then
+		print_step "Corrigindo precedence bug no kernel-doc (Perl)"
+		# Corrige todos os casos de "! $foo =~ regex" para "! ( $foo =~ regex )"
+		run_cmd sed -i -E 's/!\s*\$([A-Za-z0-9_]+)\s*=~/!(\$\1 =~/g' "$kdoc"
+		return 0
+	else
+		print_warn "kernel-doc é Python, nada a fazer"
+	fi
 }
 
 patch_zram_block_shift() {
-  local file="$builddir/$srcname/drivers/block/zram/zram_drv.h"
+	local file="$builddir/$srcname/drivers/block/zram/zram_drv.h"
 
-  print_step "Ajustando zram block em $file"
-  run_cmd sudo sed -i '/^#define ZRAM_LOGICAL_BLOCK_SHIFT 12/{
+	print_step "Ajustando zram block em $file"
+	run_cmd sudo sed -i '/^#define ZRAM_LOGICAL_BLOCK_SHIFT 12/{
     s/^/\/\/ /                             # comenta a linha
     a #define ZRAM_LOGICAL_BLOCK_SHIFT 9   /* 2^9 = 512B */
   }' "$file"
 }
 
 sh_wget_kernel() {
-  local KERNEL="${srcname}.tar.xz"
-  local major=$(echo "$KERNEL" | sed -E 's/^linux-([0-9]+).*/\1/')  # Extrai a versão principal (ex: 6 -> v6.x)
-  local URL="https://cdn.kernel.org/pub/linux/kernel/v${major}.x/$KERNEL"
+	local KERNEL="${srcname}.tar.xz"
+	local major=$(echo "$KERNEL" | sed -E 's/^linux-([0-9]+).*/\1/') # Extrai a versão principal (ex: 6 -> v6.x)
+	local URL="https://cdn.kernel.org/pub/linux/kernel/v${major}.x/$KERNEL"
 
-  if [[ ! -f "${localdir}/${KERNEL}" ]]; then
-    print_warn "Kernel $KERNEL não encontrado em ${localdir}, baixando..."
-    if $VERBOSE; then
-      run_cmd wget --continue "$URL" -O "${localdir}/${KERNEL}"
-    else
-      run_cmd wget --quiet --continue "$URL" -O "${localdir}/${KERNEL}"
-    fi
-  else
-    print_ok "Kernel $KERNEL já está no diretório atual."
-  fi
+	if [[ ! -f "${localdir}/${KERNEL}" ]]; then
+		print_warn "Kernel $KERNEL não encontrado em ${localdir}, baixando..."
+		if $VERBOSE; then
+			run_cmd wget --continue "$URL" -O "${localdir}/${KERNEL}"
+		else
+			run_cmd wget --quiet --continue "$URL" -O "${localdir}/${KERNEL}"
+		fi
+	else
+		print_ok "Kernel $KERNEL já está no diretório atual."
+	fi
 
-  # testando se existe agora
-  if [[ ! -f "${localdir}/${KERNEL}" ]]; then
-    return 1
-  fi
-  return 0
+	# testando se existe agora
+	if [[ ! -f "${localdir}/${KERNEL}" ]]; then
+		return 1
+	fi
+	return 0
 }
 
 prepare() {
@@ -404,10 +417,10 @@ prepare() {
 	PREFIX="[PREPARE]"
 	print_title "Preparando kernel ($ARCH)" "1 min"
 
-  if ! sh_wget_kernel; then
-    die "Kernel source $localdir/${srcname}.tar.xz não encontrado em $localdir"
-    exit 1
-  fi
+	if ! sh_wget_kernel; then
+		die "Kernel source $localdir/${srcname}.tar.xz não encontrado em $localdir"
+		exit 1
+	fi
 
 	run_cmd sudo rm -rfv "$builddir"
 	run_cmd mkdir -p "$builddir"
@@ -432,11 +445,11 @@ prepare() {
 	#	run_cmd make ARCH="$ARCH" olddefconfig
 	run_cmd make olddefconfig
 
-  #cd "$builddir/$srcname"
-  #fix_kernel_doc
+	#cd "$builddir/$srcname"
+	#fix_kernel_doc
 
-  cd "$builddir/$srcname"
-  patch_zram_block_shift
+	cd "$builddir/$srcname"
+	patch_zram_block_shift
 
 	print_done "Kernel preparado" $((SECONDS - start))
 }
@@ -474,9 +487,9 @@ build_docs() {
 install_kernel() {
 	local start=$SECONDS
 	local modulesdir="$pkgdir_kernel/usr/lib/modules/$version"
-  local vmlinuz_boot="vmlinuz-$version"
-  local vmlinuz_dest="$modulesdir/$vmlinuz_boot"
-  local pkgdir_kernel="$localdir/modules-$pkgbase"
+	local vmlinuz_boot="vmlinuz-$version"
+	local vmlinuz_dest="$modulesdir/$vmlinuz_boot"
+	local pkgdir_kernel="$localdir/modules-$pkgbase"
 
 	run_cmd sudo rm -rvf "$pkgdir_kernel"
 	run_cmd mkdir -p "$pkgdir_kernel"
@@ -500,13 +513,13 @@ install_kernel() {
 
 	# Instala módulos
 	print_step "Strip + install modules"
-#	ZSTD_CLEVEL=19 run_cmd make ARCH="$ARCH" INSTALL_MOD_PATH="$pkgdir_kernel/usr" INSTALL_MOD_STRIP=1 modules_install
-  ZSTD_CLEVEL=19 run_cmd make -j$(nproc) INSTALL_MOD_PATH="$pkgdir_kernel/usr" INSTALL_MOD_STRIP=1 modules_install
+	#	ZSTD_CLEVEL=19 run_cmd make ARCH="$ARCH" INSTALL_MOD_PATH="$pkgdir_kernel/usr" INSTALL_MOD_STRIP=1 modules_install
+	ZSTD_CLEVEL=19 run_cmd make -j$(nproc) INSTALL_MOD_PATH="$pkgdir_kernel/usr" INSTALL_MOD_STRIP=1 modules_install
 
 	print_step "Removendo link do build em: $modulesdir"
 	run_cmd rm -fv "$modulesdir/build"
 
-  print_done "Kernel e módulos instalados" $((SECONDS - start))
+	print_done "Kernel e módulos instalados" $((SECONDS - start))
 }
 
 install_headers() {
@@ -595,7 +608,7 @@ install_headers() {
 	print_step "Removendo arquiteturas desnecessárias"
 	local arch
 	for arch in "$dst_build"/arch/*/; do
-    [[ $arch = */x86/ ]] && continue
+		[[ $arch = */x86/ ]] && continue
 		run_cmd rm -rfv "$arch"
 	done
 
@@ -630,8 +643,8 @@ install_headers() {
 	run_cmd mkdir -p "$pkgdir_headers/usr/src"
 	run_cmd ln -sfrv "$dst_build" "$pkgdir_headers/usr/src/$pkgbase_headers"
 
-  # Remover todos os .gitignore dentro do diretório de build
-  run_cmd find "$dst_build" -type f -name ".gitignore" -delete
+	# Remover todos os .gitignore dentro do diretório de build
+	run_cmd find "$dst_build" -type f -name ".gitignore" -delete
 
 	print_done "Headers e scripts instalados" $((SECONDS - start))
 	PREFIX=""
@@ -703,8 +716,8 @@ install_docs() {
 
 create_mkinitcpio_preset() {
 	local start=$SECONDS
-  local presetdir="$pkgdir_kernel/etc/mkinitcpio.d"
-  local presetfile="$presetdir/chili-$version.preset"
+	local presetdir="$pkgdir_kernel/etc/mkinitcpio.d"
+	local presetfile="$presetdir/chili-$version.preset"
 
 	PREFIX="[MKINITCPIO]"
 
@@ -713,8 +726,8 @@ create_mkinitcpio_preset() {
 
 	print_title "Criando arquivo preset $presetfile" "1 min"
 
-  # Gera arquivo preset
-  cat <<EOF | run_cmd sudo tee "$presetfile" >/dev/null
+	# Gera arquivo preset
+	cat <<EOF | run_cmd sudo tee "$presetfile" >/dev/null
 # mkinitcpio preset file for the '$pkgbase' package
 
 #PRESETS=('default' 'fallback')
@@ -752,10 +765,10 @@ create_hook() {
 	run_cmd sudo mkdir -p "${hookdir}"
 	run_cmd sudo mkdir -p "${pkgdir_kernel}/${hookdir}"
 
-  # Gera arquivo hook
-  if ! $versioned; then
-    hookfile="${hookdir}/chili-linux-install.hook"
-    cat <<EOF | run_cmd sudo tee "$pkgdir_kernel/$hookfile" >/dev/null
+	# Gera arquivo hook
+	if ! $versioned; then
+		hookfile="${hookdir}/chili-linux-install.hook"
+		cat <<EOF | run_cmd sudo tee "$pkgdir_kernel/$hookfile" >/dev/null
 [Trigger]
 Type      = Package
 Operation = Install
@@ -775,9 +788,9 @@ Description = ==>[chili-linux] Updating linux initcpios...
 When        = PostTransaction
 Exec        = /bin/bash -c '/usr/bin/mkinitcpio -p chili && /usr/bin/update-grub'
 EOF
-else
-    hookfile="${hookdir}/chili-linux-$version-install.hook"
-    cat <<EOF | run_cmd sudo tee "$pkgdir_kernel/$hookfile" >/dev/null
+	else
+		hookfile="${hookdir}/chili-linux-$version-install.hook"
+		cat <<EOF | run_cmd sudo tee "$pkgdir_kernel/$hookfile" >/dev/null
 [Trigger]
 Type      = Package
 Operation = Install
@@ -797,7 +810,7 @@ Description = ==>[chili-linux-$version] Updating linux initcpios...
 When        = PostTransaction
 Exec        = /bin/bash -c '/usr/bin/mkinitcpio -p chili-$version && /usr/bin/update-grub'
 EOF
-fi
+	fi
 
 	print_done "Hook criado em $hookfile" $((SECONDS - start))
 	PREFIX=""
@@ -819,52 +832,52 @@ print_elapsed() {
 
 install_package() {
 	local start=$SECONDS
-  local modules_dir="$localdir/modules-linux-$version"
-  local headers_dir="$localdir/headers-linux-$version"
-  local package_dir="$localdir/package-linux-$version"
+	local modules_dir="$localdir/modules-linux-$version"
+	local headers_dir="$localdir/headers-linux-$version"
+	local package_dir="$localdir/package-linux-$version"
 
-  if ! $versioned; then
-    package_dir="$localdir/package-linux"
-  fi
+	if ! $versioned; then
+		package_dir="$localdir/package-linux"
+	fi
 
-  run_cmd cd "$localdir"
+	run_cmd cd "$localdir"
 
-  # Verificar se pastas existem
-  for d in "$modules_dir" "$headers_dir"; do
-    if [ ! -d "$d" ]; then
-      print_fail "Erro: diretório $d não encontrado!"
-      exit 1
-    fi
-  done
+	# Verificar se pastas existem
+	for d in "$modules_dir" "$headers_dir"; do
+		if [ ! -d "$d" ]; then
+			print_fail "Erro: diretório $d não encontrado!"
+			exit 1
+		fi
+	done
 
-  # Criar destino limpo
-  run_cmd sudo rm -rf "$package_dir"
-  run_cmd mkdir -p "$package_dir/modules"
-  run_cmd mkdir -p "$package_dir/headers"
+	# Criar destino limpo
+	run_cmd sudo rm -rf "$package_dir"
+	run_cmd mkdir -p "$package_dir/modules"
+	run_cmd mkdir -p "$package_dir/headers"
 
-  # Copiar conteúdo preservando estrutura
-  print_step "[*] Copiando modules..."
-  rsync -a "$modules_dir"/ "$package_dir/modules"/
+	# Copiar conteúdo preservando estrutura
+	print_step "[*] Copiando modules..."
+	rsync -a "$modules_dir"/ "$package_dir/modules"/
 
-  print_step "[*] Copiando headers..."
-  rsync -a "$headers_dir"/ "$package_dir/headers"/
+	print_step "[*] Copiando headers..."
+	rsync -a "$headers_dir"/ "$package_dir/headers"/
 
-  # Remover arquivos inúteis de git
-  print_step "[*] Limpando lixo '(.gitignore, .gitkeep, etc)'..."
-  run_cmd find "$package_dir" -type f \( -name ".gitignore" -o -name ".gitkeep" -o -name ".gitattributes" \) -delete
+	# Remover arquivos inúteis de git
+	print_step "[*] Limpando lixo '(.gitignore, .gitkeep, etc)'..."
+	run_cmd find "$package_dir" -type f \( -name ".gitignore" -o -name ".gitkeep" -o -name ".gitattributes" \) -delete
 
-  print_step "[*] Removendo $package_dir/headers/usr/lib/modules/$version/build/vmlinux"
-  run_cmd rm -fv "$package_dir/headers/usr/lib/modules/$version/build/vmlinux"
+	print_step "[*] Removendo $package_dir/headers/usr/lib/modules/$version/build/vmlinux"
+	run_cmd rm -fv "$package_dir/headers/usr/lib/modules/$version/build/vmlinux"
 
-  if ! $versioned; then
-    print_step "[*] Ajustando arquivos para versão 'default'..."
-    run_cmd mv -fv "$package_dir/modules/boot/vmlinuz-$version" "$package_dir/modules/boot/vmlinuz-chili-linux"
+	if ! $versioned; then
+		print_step "[*] Ajustando arquivos para versão 'default'..."
+		run_cmd mv -fv "$package_dir/modules/boot/vmlinuz-$version" "$package_dir/modules/boot/vmlinuz-chili-linux"
 
-    print_step "[*] Removendo $package_dir/modules/etc/mkinitcpio.d/chili-$version"
-    run_cmd rm -fv "$package_dir/modules/etc/mkinitcpio.d/chili-$version.preset"
+		print_step "[*] Removendo $package_dir/modules/etc/mkinitcpio.d/chili-$version"
+		run_cmd rm -fv "$package_dir/modules/etc/mkinitcpio.d/chili-$version.preset"
 
-    print_step "Gerando arquivo preset"
-    cat <<EOF | run_cmd tee "$package_dir/modules/etc/mkinitcpio.d/chili.preset" >/dev/null
+		print_step "Gerando arquivo preset"
+		cat <<EOF | run_cmd tee "$package_dir/modules/etc/mkinitcpio.d/chili.preset" >/dev/null
 # mkinitcpio preset file for the '$pkgbase' package
 
 PRESETS=('default' 'fallback')
@@ -882,14 +895,14 @@ fallback_image="/boot/initrd-chili-linux-fallback.img"
 fallback_options="-S autodetect"
 EOF
 
-  hookdir="$package_dir/modules/usr/share/libalpm/hooks"
-  hookfile="${hookdir}/chili-linux-install.hook"
+		hookdir="$package_dir/modules/usr/share/libalpm/hooks"
+		hookfile="${hookdir}/chili-linux-install.hook"
 
-  print_step "[*] Removendo $hookdir/*.preset"
-  run_cmd rm -fv "$hookdir/*.preset"
+		print_step "[*] Removendo $hookdir/*.preset"
+		run_cmd rm -fv "$hookdir/*.preset"
 
-  print_step "Gerando arquivo hook"
-  cat <<EOF | run_cmd tee "$hookfile" >/dev/null
+		print_step "Gerando arquivo hook"
+		cat <<EOF | run_cmd tee "$hookfile" >/dev/null
 [Trigger]
 Type      = Package
 Operation = Install
@@ -909,14 +922,14 @@ Description = ==>[chili-linux] Updating linux initcpios...
 When        = PostTransaction
 Exec        = /bin/bash -c '/usr/bin/mkinitcpio -p chili && /usr/bin/update-grub'
 EOF
-  fi
+	fi
 
-  print_step "[*] Criando link em $package_dir..."
+	print_step "[*] Criando link em $package_dir..."
 	run_cmd pushd "$package_dir/modules/usr/lib/modules/"
-	run_cmd ln -sf "$version"	"chili"
+	run_cmd ln -sf "$version" "chili"
 	run_cmd popd
 
-  print_step "[*] Alterando permissoes em $package_dir..."
+	print_step "[*] Alterando permissoes em $package_dir..."
 	run_cmd sudo chown root:root "$package_dir/" -R
 
 	print_done "[✓] Pacote gerado em: $package_dir" $((SECONDS - start))
