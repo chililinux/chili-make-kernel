@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # shellcheck shell=bash disable=SC1091,SC2039,SC2166
 #
-#  chili-rmake-kernel
+#  chili-make-kernel
 #  Created: 2025/08/24 - 14:01
 #  Altered: 2025/08/24 - 14:01
 #  Updated: qui 28 ago 2025 13:00:22 -04
@@ -33,7 +33,7 @@
 ##############################################################################
 #export LANGUAGE=pt_BR
 export TEXTDOMAINDIR=/usr/share/locale
-export TEXTDOMAIN=chili-rmake-kernel
+export TEXTDOMAIN=chili-make-kernel
 
 # ======================
 # Colors
@@ -210,7 +210,7 @@ choose_config() {
   done
   xconfig=$(dialog \
     --default-item '' \
-    --backtitle "Chili rmake - Seleção de Config" \
+    --backtitle "Chili Make Kernel - Seleção de Config" \
     --title "Escolha um Config" \
     --stdout \
     --colors \
@@ -243,7 +243,7 @@ choose_version_type() {
   done
   xversion=$(dialog \
     --default-item '' \
-    --backtitle "Chili rmake - Seleção de verson" \
+    --backtitle "Chili Make Kernel - Seleção de verson" \
     --title "Escolha um tipo" \
     --stdout \
     --colors \
