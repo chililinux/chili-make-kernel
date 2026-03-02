@@ -988,10 +988,10 @@ done
 #versioned=true
 rundir="/opt/chili-make-kernel"
 if ! choose_path; then die "Cancelled!"; fi
-rundir+='/chili-make-kernel/build'
 if [ ! -w "$rundir" ]; then
 	elevate_to_root "$@"
 fi
+rundir+='/chili-make-kernel/build'
 mkdir -p "$rundir"
 pushd "${rundir}" || die
 
