@@ -56,20 +56,20 @@ fi
 package() {
 	cd "${srcdir}/${pkgname}"
 
-  # Verify default folder
-  if [ -d "${srcdir}/${pkgname}/${pkgname}" ]; then
-    InternalDir="${srcdir}/${pkgname}/${pkgname}"
-  else
-    InternalDir="${srcdir}/${pkgname}"
-  fi
+	# Verify default folder
+	if [ -d "${srcdir}/${pkgname}/${pkgname}" ]; then
+		InternalDir="${srcdir}/${pkgname}/${pkgname}"
+	else
+		InternalDir="${srcdir}/${pkgname}"
+	fi
 
-  # Copiar a estrutura de /etc, /usr e /opt para /
+	# Copiar a estrutura de /etc, /usr e /opt para /
 	local dirs=("usr" "etc" "opt" "boot" "build")
-  for dir in "${dirs[@]}"; do
-    if [ -d "${InternalDir}/${dir}" ]; then
-      cp -a "${InternalDir}/${dir}" "${pkgdir}/"
-    fi
-  done
+	for dir in "${dirs[@]}"; do
+		if [ -d "${InternalDir}/${dir}" ]; then
+			cp -a "${InternalDir}/${dir}" "${pkgdir}/"
+		fi
+	done
 
 	# Install license file if present
 	if [ -f "LICENSE" ]; then
