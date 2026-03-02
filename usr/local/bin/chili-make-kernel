@@ -5,10 +5,10 @@
 #  chili-make-kernel
 #  Created: 2025/08/24 - 14:01
 #  Altered: 2025/08/24 - 14:01
-#  Updated: sáb 21 fev 2026 07:13:28 -04
+#  Updated: seg 02 mar 2026 16:56:27 -04
 #
-#  Copyright (c) 2019-2025, Vilmar Catafesta <vcatafesta@gmail.com>
-#                2019-2025, ChiliLinux Team <github.com/chililinux>
+#  Copyright (c) 2019-2026, Vilmar Catafesta <vcatafesta@gmail.com>
+#                2019-2026, ChiliLinux Team <github.com/chililinux>
 #  All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
@@ -174,35 +174,52 @@ usage() {
 	exit 1
 }
 
-# ======================
-# Parse parameters
-# ======================
-while [[ $# -gt 0 ]]; do
-	case "$1" in
-	--nocolor) COLOR=0 ;;
-	--verbose) VERBOSE=true ;;
-	--no-prepare) DO_PREPARE=false ;;
-	--no-build) DO_BUILD=false ;;
-	--no-build-docs) DO_BUILD=false ;;
-	--no-kernel) DO_INSTALL_KERNEL=false ;;
-	--no-headers) DO_INSTALL_HEADERS=false ;;
-	--no-slim) DO_SLIM_MODULES=false ;;
-	--no-docs) DO_INSTALL_DOCS=false ;;
-	--no-mkinitcpio) DO_CREATE_MKINITCPIO=false ;;
-	--no-hook) DO_CREATE_HOOK=false ;;
-	--no-package) DO_PACKAGE=false ;;
-	-h | --help) usage ;;
-	*)
-		echo "Unknown option: $1"
-		usage
-		;;
-	esac
-	shift
-done
-
 die() {
 	printf "${red}${CROSS} ${red}fatal: %s\n${reset}" "$*"
 	exit 1
+}
+
+choose_path() {
+	local array=()
+	local ARRAY=()
+	local sep="\xe2\x94\x82"
+	local xconfig
+
+	#	mapfile -t ARRAY < <(find . -maxdepth 1 -type f -iname 'config-[0-9]*')
+	#	if ((${#ARRAY[@]} == 0)); then
+	#		die "Nenhum arquivo de configuração encontrado"
+	#	fi
+	ARRAY=("$PWD" /opt)
+
+  if [[ $EUID -eq 0 ]]; then
+    msg='Path'
+  else
+    msg='Caso você não tenha acesso para gravar, sera iniciado uma nova instanacia desse app, bastando escolher novamente o path'
+  fi
+
+	for key in "${ARRAY[@]}"; do
+		filename=${key}
+		array+=("$filename" "$(printf "$sep%-s" "$(file "$key")")")
+	done
+
+	xconfig=$(dialog \
+		--default-item '' \
+		--backtitle "Chili Make Kernel - Seleção de Path" \
+		--title "Escolha um diretorio de trabalho" \
+		--stdout \
+		--colors \
+		--menu "$msg" \
+		20 0 100 \
+		"${array[@]}")
+
+	exit_status=$?
+	case $exit_status in
+	"$D_ESC" | "$D_CANCEL")
+		return 1
+		;;
+	esac
+	rundir="$xconfig"
+	echo "${rundir}"
 }
 
 choose_config() {
@@ -211,7 +228,7 @@ choose_config() {
 	local sep="\xe2\x94\x82"
 	local xconfig
 
-   mapfile -t ARRAY < <(find . -maxdepth 1 -type f -iname 'config-[0-9]*')
+	mapfile -t ARRAY < <(find . -maxdepth 1 -type f -iname 'config-[0-9]*')
 	if ((${#ARRAY[@]} == 0)); then
 		die "Nenhum arquivo de configuração encontrado"
 	fi
@@ -227,7 +244,7 @@ choose_config() {
 		--stdout \
 		--colors \
 		--menu "Configs's in $PWD" \
-		20 00 00 \
+		20 0 100 \
 		"${array[@]}")
 
 	exit_status=$?
@@ -276,33 +293,6 @@ choose_version_type() {
 	esac
 	echo "${version_type}"
 }
-
-# ======================
-# Configuração principal
-# ======================
-#version='6.12.43-lts-chili'
-#version=type='versioned'
-#versioned=true
-if ! choose_config; then die "Cancelled!"; fi
-if ! choose_version_type; then die "Cancelled!"; fi
-pkgbase="linux-$version"
-pkgbase_headers="linux-headers-$version"
-ARCH="x86_64"
-localdir="$PWD"
-builddir="$localdir/build-$pkgbase"
-pkgdir_kernel="$localdir/modules-$pkgbase"
-pkgdir_headers="$localdir/headers-$pkgbase"
-pkgdir_docs="$localdir/docs-$pkgbase"
-srcname="linux-${version%%-*}"
-#kernel_config="$localdir/config"
-kernel_config="$localdir/config-${version}"
-source_tarball="$localdir/${srcname}.tar.xz"
-
-mkdir -p "$builddir" "$pkgdir_kernel" "$pkgdir_headers" "$pkgdir_docs"
-
-# ======================
-# Helpers
-# ======================
 
 run_cmd() {
 	#	print_step "running: $*" "${black}"
@@ -935,6 +925,97 @@ EOF
 	print_done "[✓] Pacote gerado em: $package_dir" $((SECONDS - start))
 
 }
+
+sh_checkroot() {
+	((EUID != 0)) && elevate_to_root "$@" || return 0
+}
+
+elevate_to_root() {
+	print_ok "This script must be run as root. Elevating privileges..."
+	ccabec+='root [elevated]'
+	# Tenta usar sudo primeiro (caso esteja configurado)
+	if command -v sudo >/dev/null 2>&1; then
+		exec sudo bash "$0" "$@"
+	fi
+	# Se sudo falhar, tenta su
+	if command -v su >/dev/null 2>&1; then
+		exec su -c "$0 $*"
+	fi
+	die "Error: Unable to elevate privileges. Run manually as root."
+}
+
+# uso dentro do app:
+#run_as_root cp arquivo /opt/meuapp/
+run_as_root() {
+  if [[ $EUID -eq 0 ]]; then
+		"$@"
+	else
+		pkexec "$@"
+	fi
+}
+
+# ======================
+# Parse parameters
+# ======================
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+	--nocolor) COLOR=0 ;;
+	--verbose) VERBOSE=true ;;
+	--no-prepare) DO_PREPARE=false ;;
+	--no-build) DO_BUILD=false ;;
+	--no-build-docs) DO_BUILD=false ;;
+	--no-kernel) DO_INSTALL_KERNEL=false ;;
+	--no-headers) DO_INSTALL_HEADERS=false ;;
+	--no-slim) DO_SLIM_MODULES=false ;;
+	--no-docs) DO_INSTALL_DOCS=false ;;
+	--no-mkinitcpio) DO_CREATE_MKINITCPIO=false ;;
+	--no-hook) DO_CREATE_HOOK=false ;;
+	--no-package) DO_PACKAGE=false ;;
+	-h | --help) usage ;;
+	*)
+		echo "Unknown option: $1"
+		usage
+		;;
+	esac
+	shift
+done
+
+# ======================
+# Configuração principal
+# ======================
+#version='6.12.43-lts-chili'
+#version=type='versioned'
+#versioned=true
+rundir="/opt/chili-make-kernel"
+if ! choose_path; then die "Cancelled!"; fi
+rundir+='/chili-make-kernel/build'
+if [ ! -w "$rundir" ]; then
+	elevate_to_root "$@"
+fi
+mkdir -p "$rundir"
+pushd "${rundir}" || die
+
+uname_r=$(uname -r)
+kconfig="config-${uname_r%_*}-custom"
+if [[ ! -e "$kconfig" ]]; then
+	zcat /proc/config.gz >"$rundir/$kconfig"
+fi
+
+if ! choose_config; then die "Cancelled!"; fi
+if ! choose_version_type; then die "Cancelled!"; fi
+pkgbase="linux-$version"
+pkgbase_headers="linux-headers-$version"
+ARCH="x86_64"
+localdir="$rundir/$PWD"
+builddir="$localdir/build-$pkgbase"
+pkgdir_kernel="$localdir/modules-$pkgbase"
+pkgdir_headers="$localdir/headers-$pkgbase"
+pkgdir_docs="$localdir/docs-$pkgbase"
+srcname="linux-${version%%-*}"
+#kernel_config="$localdir/config"
+kernel_config="$localdir/config-${version}"
+source_tarball="$localdir/${srcname}.tar.xz"
+mkdir -p "$builddir" "$pkgdir_kernel" "$pkgdir_headers" "$pkgdir_docs"
 
 # ======================
 # Fluxo principal
