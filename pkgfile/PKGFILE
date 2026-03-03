@@ -10,7 +10,7 @@ license=('MIT')
 url="https://github.com/chililinux/${pkgname}"
 source=("git+${url}.git")
 md5sums=('SKIP')
-depends=(pahole pahole-devel)
+depends=(pahole pahole-devel python3-yaml graphviz)
 optdepends=()
 
 package() {
