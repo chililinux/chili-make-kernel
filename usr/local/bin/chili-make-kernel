@@ -1005,7 +1005,7 @@ if ! choose_version_type; then die "Cancelled!"; fi
 pkgbase="linux-$version"
 pkgbase_headers="linux-headers-$version"
 ARCH="x86_64"
-localdir="$rundir/$PWD"
+localdir="$rundir"
 builddir="$localdir/build-$pkgbase"
 pkgdir_kernel="$localdir/modules-$pkgbase"
 pkgdir_headers="$localdir/headers-$pkgbase"
