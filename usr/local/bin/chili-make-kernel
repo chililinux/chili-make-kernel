@@ -986,7 +986,6 @@ done
 #version='6.12.43-lts-chili'
 #version=type='versioned'
 #versioned=true
-rundir="/opt/chili-make-kernel"
 if ! choose_path; then die "Cancelled!"; fi
 if [ ! -w "$rundir" ]; then
 	elevate_to_root "$@"
