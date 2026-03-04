@@ -111,6 +111,21 @@ export TEXTDOMAIN=chili-make-kernel
 : "${CROSS="${white}[${red}✗${rst}${white}]${rst}"}"
 : "${INFO="${white}[${gray}i${rst}${white}]${rst}"}"
 
+# dialog colors
+GREEN="\Z2"
+MAGENTA="\Z5"
+REVERSE="\Zr"
+UNDERLINE="\Zu"
+BLACK="\Z0"
+YELLOW="\Z3"
+WHITE="\Z7"
+BLUE="\Z4"
+CYAN="\Z6"
+RED='\Z1'
+BOLD="\Zb"
+RESET="\Zn"
+RST='\Zn'
+
 #debug
 export PS4='${red}${0##*/}${green}[${FUNCNAME[0]:-MAIN}]${pink}[${LINENO}]${reset} '
 #set -x
@@ -118,6 +133,15 @@ export PS4='${red}${0##*/}${green}[${FUNCNAME[0]:-MAIN}]${pink}[${LINENO}]${rese
 shopt -s extglob
 shopt -s nullglob
 set -euo pipefail
+
+#system
+readonly APP="${0##*/}"
+readonly _VERSION_='1.03.03-20260303'
+readonly DEPENDENCIES=(dialog rsync awk tar sed cat grep sort)
+readonly LOCKFILE="/tmp/$APP.lock"
+declare CCABEC="$APP - v${_VERSION_} - https://github.com/chililinux/chili-make-kernel"
+declare distro="\Z2arch"
+declare DIALOG=dialog
 
 # ======================
 # Limpa logs antigos
@@ -140,7 +164,7 @@ DO_INSTALL_KERNEL=true
 DO_INSTALL_HEADERS=true
 DO_SLIM_MODULES=true
 DO_INSTALL_DOCS=true
-DO_CREATE_MKINITCPIO=true
+DO_CREATE_INITRAMFS=true
 DO_CREATE_HOOK=true
 DO_PACKAGE=true
 
@@ -169,7 +193,7 @@ usage() {
 	echo "  --no-headers       Skip headers installation"
 	echo "  --no-slim          Skip slimming modules"
 	echo "  --no-docs          Skip documentation installation"
-	echo "  --no-mkinitcpio    Skip create preset mkinitcpio"
+	echo "  --no-initramfs     Skip create preset initramfs"
 	echo "  -h, --help         Show this help message"
 	exit 1
 }
@@ -177,6 +201,125 @@ usage() {
 die() {
 	printf "${red}${CROSS} ${red}fatal: %s\n${reset}" "$*"
 	exit 1
+}
+
+sh_splitarray() {
+	local str=("$1")
+	local pos="$2"
+	local sep="${3:-'|'}"
+	local array
+
+	[[ $# -eq 3 && "$pos" = "|" && "$sep" =~ ^[0-9]+$ ]] && {
+		sep="$2"
+		pos="$3"
+	}
+	[[ $# -eq 2 && "$pos" = "$sep" ]] && {
+		sep="$pos"
+		pos=1
+	}
+	[[ $# -eq 1 || ! "$pos" =~ ^[0-9]+$ ]] && { pos=1; }
+
+	IFS="$sep" read -r -a array <<<"$str"
+	echo "${array[pos - 1]}"
+}
+
+strtoarray() {
+	local anew
+	IFS=' ' read -r -a anew <<<"$1"
+	echo "${anew[@]}"
+}
+
+lenarraystr() {
+	local new=$1
+	read -ra ADDR <<<"$new"
+	echo "${#ADDR[@]}"
+}
+
+choose_kernel() {
+	local sep="\xe2\x94\x82"
+	local sep="$(printf "$sep")"
+	local xconfig
+
+	xconfig=$(dialog \
+		--colors \
+		--stdout \
+		--backtitle "$CCABEC" \
+		--title " == KERNEL ==" \
+		--radiolist "Escolha o modelo de configuração do kernel:" 0 0 0 \
+		"config_customizado" "$sep Usa configurações de um arquivo pre-customizado" OFF \
+		"config_atual" "$sep Copia a configuração do kernel em uso e atualiza para a versão nova. Kernel compatível e genérico" ON \
+		"defconfig" "$sep Configuração padrão genérica para a arquitetura (ex.: x86). Kernel funcional, mas não otimizado" OFF \
+		"olddefconfig" "$sep Atualiza config existente com defaults automáticos para novas opções" OFF \
+		"localmodconfig" "$sep Kernel mínimo baseado nos módulos carregados. Kernel enxuto, adaptado ao hardware atual" OFF \
+		"localyesconfig" "$sep Kernel monolítico, tudo embutido no kernel (sem módulos externos)." OFF \
+		"alldefconfig" "$sep kernel mínimo padrão upstream" OFF \
+		"allnoconfig" "$sep Kernel vazio, tudo desativado" OFF \
+		"allyesconfig" "$sep Ativa praticamente todas as opções como built‑in. Kernel enorme, com tudo embutido" OFF \
+		"allmodconfig" "$sep Ativa praticamente todas as opções como módulos. Kernel modular gigante." OFF)
+
+	exit_status=$?
+	case $exit_status in
+	"$D_ESC" | "$D_CANCEL")
+		return 1
+		;;
+	esac
+
+	MOD_KERNEL="$xconfig"
+  make_config "$MOD_KERNEL"
+  if ! choose_config; then die "Cancelled!"; fi
+}
+
+choose_options() {
+	local array=()
+	local -A ARRAY=()
+	local sep="\xe2\x94\x82"
+	local xconfig
+
+	ARRAY+=(['no-prepare']='Pular etapa de preparação|off')
+	ARRAY+=(['no-build']='Pular etapa de compilação do kernel|off')
+	ARRAY+=(['no-build-docs']='Pular etapa de compilação da documentação|on')
+	ARRAY+=(['no-kernel']='Pular instalação do kernel|off')
+	ARRAY+=(['no-headers']='Pular instalação dos headers|off')
+	ARRAY+=(['no-slim']='Pular redução dos módulos|off')
+	ARRAY+=(['no-docs']='Pular instalação da documentação|on')
+	ARRAY+=(['no-initramfs']='Pular criação do preset initramfs|off')
+	ARRAY+=(['nocolor']='Desativar saída colorida|off')
+	ARRAY+=(['verbose']='Ativar saída detalhada (logs completos da compilação)|on')
+
+	for key in $(printf "%s\n" "${!ARRAY[@]}" | sort); do
+		option="${key}"
+		desc=$(sh_splitarray "${ARRAY[$key]}" 1)
+		flag=$(sh_splitarray "${ARRAY[$key]}" 2)
+		array+=(
+			"$option"
+			"$(printf "$sep%-s" "$desc")"
+			"$flag"
+		)
+	done
+
+	xconfig=$($DIALOG \
+		--colors \
+		--backtitle "$CCABEC" \
+		--default-item '' \
+		--title "== PARÂMETROS ==" \
+		--checklist "Escolha as parâmetros/flags" \
+		--stdout \
+		20 0 100 \
+		"${array[@]}")
+
+	exit_status=$?
+	case $exit_status in
+	"$D_ESC" | "$D_CANCEL")
+		return 1
+		;;
+	esac
+	OPTIONS=($(strtoarray "$xconfig"))
+	# cria um novo array com prefixo --
+	prefixed=()
+	for opt in "${OPTIONS[@]}"; do
+		prefixed+=(--"$opt")
+	done
+	GLOBAL_OPTS=("${prefixed[@]}")
 }
 
 choose_path() {
@@ -189,13 +332,13 @@ choose_path() {
 	#	if ((${#ARRAY[@]} == 0)); then
 	#		die "Nenhum arquivo de configuração encontrado"
 	#	fi
-	ARRAY=("$PWD" /opt)
+	ARRAY=("$HOME" /opt)
 
-  if [[ $EUID -eq 0 ]]; then
-    msg='Path'
-  else
-    msg='Caso você não tenha acesso para gravar, sera iniciado uma nova instanacia desse app, bastando escolher novamente o path'
-  fi
+	if [[ $EUID -eq 0 ]]; then
+		msg='Path'
+	else
+		msg='Caso você não tenha acesso para gravar, sera iniciado uma nova instanacia desse app, bastando escolher novamente o path'
+	fi
 
 	for key in "${ARRAY[@]}"; do
 		filename=${key}
@@ -204,7 +347,7 @@ choose_path() {
 
 	xconfig=$(dialog \
 		--default-item '' \
-		--backtitle "Chili Make Kernel - Seleção de Path" \
+		--backtitle "$CCABEC" \
 		--title "Escolha um diretorio de trabalho" \
 		--stdout \
 		--colors \
@@ -238,8 +381,8 @@ choose_config() {
 		array+=("$filename" "$(printf "$sep%-s" "$(file "$key")")")
 	done
 	xconfig=$(dialog \
-		--default-item '' \
-		--backtitle "Chili Make Kernel - Seleção de Config" \
+		--default-item '$kernel_config' \
+		--backtitle "$CCABEC" \
 		--title "Escolha um Config" \
 		--stdout \
 		--colors \
@@ -257,10 +400,73 @@ choose_config() {
 	echo "${version}"
 }
 
+choose_kernel_tarball() {
+	local array=()
+	local ARRAY=()
+	local sep="\xe2\x94\x82"
+	local xconfig
+
+	mapfile -t ARRAY < <(find . -maxdepth 1 -type f -iname 'linux*tar.xz')
+	if ((${#ARRAY[@]} == 0)); then
+		die "Nenhum tarball de kernel encontrado"
+	fi
+
+	for key in "${ARRAY[@]}"; do
+		filename=${key##*/}
+		array+=("$filename" "$(printf "$sep%-s" "$(file "$key")")")
+	done
+	xconfig=$(dialog \
+		--default-item '' \
+		--backtitle "$CCABEC" \
+		--title "== TARBALL DE KERNEL ==" \
+		--stdout \
+		--colors \
+		--menu "Tarball de Kernel's in $PWD" \
+		20 0 100 \
+		"${array[@]}")
+
+	exit_status=$?
+	case $exit_status in
+	"$D_ESC" | "$D_CANCEL")
+		return 1
+		;;
+	esac
+	version="${xconfig#linux-}"
+	version="${version%.tar.xz}"
+	echo "${version}"
+}
+
+make_config() {
+  local modelo="$1"
+
+  case $modelo in
+    config_atual)
+      uname_r=$(uname -r)
+      kconfig="config-${uname_r%_*}-custom"
+      if [[ ! -e "$rundir/$kconfig" ]]; then
+        zcat /proc/config.gz >"$rundir/$kconfig"
+      fi
+    ;;
+    *)
+      choose_kernel_tarball
+      kconfig="config-$version-$modelo"
+      touch "$kconfig"
+    ;;
+  esac
+}
+
+make_config_atual() {
+  uname_r=$(uname -r)
+  kconfig="config-${uname_r%_*}-custom"
+  if [[ ! -e "$rundir/$kconfig" ]]; then
+    zcat /proc/config.gz >"$rundir/$kconfig"
+  fi
+}
+
 choose_version_type() {
 	local array=()
 	local ARRAY=("default" "versioned")
-	local DESC=("vmlinuz-chili-linux" "vmlinuz-$version")
+	local DESC=("vmlinuz-chili" "vmlinuz-$version")
 	local sep="\xe2\x94\x82"
 	local xversion
 	local nc=0
@@ -272,7 +478,7 @@ choose_version_type() {
 	done
 	xversion=$(dialog \
 		--default-item '' \
-		--backtitle "Chili Make Kernel - Seleção de verson" \
+		--backtitle "$CCABEC" \
 		--title "Escolha um tipo" \
 		--stdout \
 		--colors \
@@ -428,15 +634,36 @@ prepare() {
 		exit 1
 	}
 
-	cp "$kernel_config" .config
-	print_step "Copied .config from $kernel_config"
-
-	print_step "Running make ARCH=$ARCH olddefconfig"
-	#	run_cmd make ARCH="$ARCH" olddefconfig
-	run_cmd make olddefconfig
-
-	#cd "$builddir/$srcname"
-	#fix_kernel_doc
+  case $MOD_KERNEL in
+  alldefconfig)
+	  print_step "Running make alldefconfig"
+  	run_cmd make -j"$(nproc)" mrproper
+  	run_cmd make -j"$(nproc)" alldefconfig
+  	cp .config "$kernel_config"
+  	print_step "Copied .config to $kernel_config"
+  	;;
+  defconfig)
+	  print_step "Running make defconfig"
+  	run_cmd make defconfig
+  	cp .config "$kernel_config"
+  	print_step "Copied .config to $kernel_config"
+  	;;
+  localyesconfig)
+	  print_step "Running make localyesconfig"
+	  run_cmd make olddefconfig
+	  run_cmd make localyesconfig
+  	cp .config "$kernel_config"
+  	print_step "Copied .config to $kernel_config"
+  	;;
+  config_customizado|config_atual)
+  	cp "$kernel_config" .config
+  	print_step "Copied .config from $kernel_config"
+	  print_step "Running make olddefconfig"
+  	run_cmd make olddefconfig
+  	#cd "$builddir/$srcname"
+  	#fix_kernel_doc
+    ;;
+  esac
 
 	cd "$builddir/$srcname"
 	patch_zram_block_shift
@@ -452,13 +679,18 @@ build() {
 
 	print_title "Compilando kernel e módulos ($ARCH)" "30 min"
 	#	run_cmd make -j"$(nproc)" ARCH="$ARCH" all
-	run_cmd make -j"$(nproc)" all
+  #	run_cmd make -j"$(nproc)" all
+	run_cmd make -j"$(nproc)" bzImage modules
 	print_done "Kernel e módulos compilados" $((SECONDS - start))
 
 	local start_bpf=$SECONDS
 	print_title "Gerando headers BPF CO-RE" "2 min"
 	#	run_cmd make -C tools/bpf/bpftool ARCH="$ARCH" vmlinux.h feature-clang-bpf-co-re=1
-	run_cmd make -C tools/bpf/bpftool vmlinux.h feature-clang-bpf-co-re=1
+  if grep -q '^CONFIG_DEBUG_INFO_BTF=y' .config; then
+    run_cmd make -C tools/bpf/bpftool vmlinux.h feature-clang-bpf-co-re=1
+  else
+    print_step "[BUILD] BTF não disponível, pulando geração do vmlinux.h"
+  fi
 	print_done "BPF headers gerados" $((SECONDS - start_bpf))
 }
 
@@ -470,7 +702,7 @@ build_docs() {
 
 	print_title "Gerando documentação HTML" "2 min"
 	#	run_cmd make ARCH="$ARCH" htmldocs SPHINXOPTS=-QT
-	run_cmd make htmldocs SPHINXOPTS=-QT
+	run_cmd make htmldocs SPHINXOPTS="-QT -j4"
 	print_done "Docs gerados" $((SECONDS - start_docs))
 }
 
@@ -513,131 +745,173 @@ install_kernel() {
 }
 
 install_headers() {
-	local start=$SECONDS
-	local src_build="$builddir/$srcname"
-	local dst_build="$pkgdir_headers/usr/lib/modules/$version/build"
+  case $distro in
+  void) install_headers_void;;
+  *) install_headers_generic;;
+  esac
+}
 
-	PREFIX="[HEADERS]"
+install_headers_void() {
+  local start=$SECONDS
+  local src="$builddir/$srcname"
+  local dst="$pkgdir_headers/usr/lib/modules/$version/build"
 
-	run_cmd sudo rm -rfv "$pkgdir_headers"
-	run_cmd mkdir -p "$pkgdir_headers"
+  PREFIX="[HEADERS]"
 
-	print_title "Instalando headers e scripts de build" "5 min"
+  run_cmd rm -rf "$pkgdir_headers"
+  run_cmd mkdir -p "$dst"
 
-	# Cria diretório de destino
-	mkdir -p "$dst_build"
+  print_title "Instalando linux-headers (Void style)" "2 min"
 
-	# Arquivos principais de build
-	print_step "Copiando arquivos principais (.config, Makefile, Module.symvers, etc)"
-	#  run_cmd install -Dt "$dst_build" -m644 "$src_build"/.config "$src_build"/Makefile "$src_build"/Module.symvers "$src_build"/System.map \
-	#      "$src_build"/localversion.* "$src_build"/version "$src_build"/vmlinux "$src_build"/tools/bpf/bpftool/vmlinux.h
-	run_cmd install -Dt "$dst_build" -m644 \
-		"$src_build"/.config \
-		"$src_build"/Makefile \
-		"$src_build"/Module.symvers \
-		"$src_build"/System.map \
-		"$src_build"/vmlinux \
-		"$src_build"/tools/bpf/bpftool/vmlinux.h
-	run_cmd install -Dt "$dst_build/kernel" -m644 "$src_build/kernel/Makefile"
-	run_cmd install -Dt "$dst_build/arch/x86" -m644 "$src_build/arch/x86/Makefile"
-	run_cmd cp -a "$src_build/scripts" "$dst_build/"
-	run_cmd ln -sfrt "$dst_build" "$dst_build/scripts/gdb/vmlinux-gdb.py"
+  cd "$src"
 
-	# Ferramentas necessárias
-	print_step "Instalando objtool e resolve_btfids"
-	run_cmd install -Dt "$dst_build/tools/objtool" "$src_build/tools/objtool/objtool"
-	run_cmd install -Dt "$dst_build/tools/bpf/resolve_btfids" "$src_build/tools/bpf/resolve_btfids/resolve_btfids"
+  # prepara árvore para módulos externos
+  print_step "Executando modules_prepare"
+  run_cmd make modules_prepare
 
-	# Headers
-	print_step "Instalando include e headers específicos"
+  # copia árvore essencial
+  print_step "Copiando árvore de headers"
 
-	run_cmd cp -a "$src_build/include" "$dst_build/"
-	run_cmd cp -a "$src_build/arch/x86/include" "$dst_build/arch/x86/"
-	run_cmd install -Dt "$dst_build/arch/x86/kernel" -m644 "$src_build/arch/x86/kernel/asm-offsets.s"
+  (cd "$src" && tar cf - \
+    Makefile \
+    .config \
+    System.map \
+    include \
+    scripts \
+    arch/x86 \
+  ) | (cd "$dst" && tar xf -)
 
-	for dir in \
-		drivers/md \
-		net/mac80211 \
-		drivers/media/i2c \
-		drivers/media/usb/dvb-usb \
-		drivers/media/dvb-frontends \
-		drivers/media/tuners \
-		drivers/iio/common/hid-sensors; do
-		for f in "$src_build/$dir/"*.h; do
-			[ -e "$f" ] || continue
-			run_cmd install -Dt "$dst_build/$dir" -m644 "$f"
-		done
-	done
+  # arquivos opcionais
+  print_step "Copiando arquivos opcionais"
 
-	# KConfig
-	print_step "Instalando arquivos KConfig"
-	cd "$src_build"
-	find . -name 'Kconfig*' -print0 | while IFS= read -r -d '' file; do
-		install -Dm644 "$file" "$dst_build/$file"
-	done
+  [ -f Module.symvers ] && cp -a Module.symvers "$dst/"
+  [ -f vmlinux ] && cp -a vmlinux "$dst/"
 
-	# Rust
-	print_step "Instalando arquivos Rust"
-	#run_cmd install -Dt "$dst_build/rust" -m644 "$src_build/rust/"*.rmeta
-	#run_cmd install -Dt "$dst_build/rust" "$src_build/rust/"*.so
-	for f in "$src_build/rust/"*.rmeta; do
-		[ -e "$f" ] || continue
-		run_cmd install -Dt "$dst_build/rust" -m644 "$f"
-	done
+  # remove arquiteturas não usadas
+  print_step "Removendo arquiteturas desnecessárias"
 
-	for f in "$src_build/rust/"*.so; do
-		[ -e "$f" ] || continue
-		run_cmd install -Dt "$dst_build/rust" "$f"
-	done
+  find "$dst/arch" -mindepth 1 -maxdepth 1 ! -name x86 -exec rm -rf {} +
 
-	# VDSO
-	print_step "Instalando VDSO não-stripado"
-	(cd "$src_build" && run_cmd make INSTALL_MOD_PATH="$pkgdir_headers/usr" vdso_install link=)
+  # remove documentação
+  run_cmd rm -rf "$dst/Documentation"
 
-	# Limpando arquiteturas não usadas
-	print_step "Removendo arquiteturas desnecessárias"
-	local arch
-	for arch in "$dst_build"/arch/*/; do
-		[[ $arch = */x86/ ]] && continue
-		run_cmd rm -rfv "$arch"
-	done
+  # remove objetos temporários
+  find "$dst" -name '*.o' -delete
 
-	# Documentação e arquivos inúteis
-	print_step "Removendo documentação e symlinks quebrados"
-	run_cmd rm -rfv "$dst_build/Documentation"
-	if $VERBOSE; then
-		find -L "$dst_build" -type l -exec rm -v {} \;
-		find "$dst_build" -type f -name '*.o' -exec rm -v {} \;
-	else
-		find -L "$dst_build" -type l -exec rm {} \;
-		find "$dst_build" -type f -name '*.o' -exec rm {} \;
-	fi
+  # remove symlinks quebrados
+  find -L "$dst" -type l -delete
 
-	# Strip de ferramentas de build
-	print_step "Stripando binários, bibliotecas e vmlinux"
-	if $VERBOSE; then
-		cmd='strip -v'
-	else
-		cmd='strip'
-	fi
-	while IFS= read -rd '' file; do
-		case "$(file -Sib "$file")" in
-		application/x-sharedlib\;* | application/x-pie-executable\;*) $cmd "$file" ;;
-		application/x-archive\;* | application/x-executable\;*) $cmd "$file" ;;
-		esac
-	done < <(find "$dst_build" -type f -perm -u+x ! -name vmlinux -print0)
-	run_cmd $cmd "$dst_build/vmlinux"
+  # cria symlink padrão
+  print_step "Criando symlink em /usr/src"
 
-	# Symlink final
-	print_step "Symlink final"
-	run_cmd mkdir -p "$pkgdir_headers/usr/src"
-	run_cmd ln -sfrv "$dst_build" "$pkgdir_headers/usr/src/$pkgbase_headers"
+  mkdir -p "$pkgdir_headers/usr/src"
+  run_cmd ln -sfr "$dst" "$pkgdir_headers/usr/src/linux-$version"
 
-	# Remover todos os .gitignore dentro do diretório de build
-	run_cmd find "$dst_build" -type f -name ".gitignore" -delete
+  print_done "Headers instalados (Void style)" $((SECONDS - start))
+  PREFIX=""
+}
 
-	print_done "Headers e scripts instalados" $((SECONDS - start))
-	PREFIX=""
+install_headers_generic() {
+  local start=$SECONDS
+  local src="$builddir/$srcname"
+  local dst="$pkgdir_headers/usr/lib/modules/$version/build"
+
+  PREFIX="[HEADERS]"
+
+  run_cmd sudo rm -rfv "$pkgdir_headers"
+  run_cmd mkdir -p "$dst"
+
+  print_title "Instalando headers e scripts de build" "5 min"
+
+  cd "$src"
+
+  # prepara árvore para módulos externos
+  print_step "Executando modules_prepare"
+  run_cmd make modules_prepare
+
+  # copia árvore principal (rápido e preserva tudo)
+  print_step "Copiando árvore de headers"
+
+  (cd "$src" && tar cf - \
+    Makefile \
+    .config \
+    System.map \
+    include \
+    scripts \
+    arch \
+  ) | (cd "$dst" && tar xf -)
+
+  # arquivos opcionais
+  print_step "Instalando arquivos opcionais"
+
+  [ -f Module.symvers ] && \
+    run_cmd install -Dm644 Module.symvers "$dst/Module.symvers"
+
+  [ -f vmlinux ] && \
+    run_cmd install -Dm644 vmlinux "$dst/vmlinux"
+
+  [ -f tools/bpf/bpftool/vmlinux.h ] && \
+    run_cmd install -Dm644 tools/bpf/bpftool/vmlinux.h "$dst/vmlinux.h"
+
+  # ferramentas usadas por módulos externos
+  print_step "Instalando ferramentas"
+
+  if [ -f tools/objtool/objtool ]; then
+    run_cmd install -Dm755 tools/objtool/objtool \
+      "$dst/tools/objtool/objtool"
+  fi
+
+  if [ -f tools/bpf/resolve_btfids/resolve_btfids ]; then
+    run_cmd install -Dm755 tools/bpf/resolve_btfids/resolve_btfids \
+      "$dst/tools/bpf/resolve_btfids/resolve_btfids"
+  fi
+
+  # vdso (compatível com kernels antigos)
+  if make -q vdso_install 2>/dev/null; then
+    print_step "Instalando VDSO"
+    run_cmd make INSTALL_MOD_PATH="$pkgdir_headers/usr" vdso_install link=
+  fi
+
+  # remover arquiteturas não usadas
+  print_step "Removendo arquiteturas desnecessárias"
+
+  local arch
+  for arch in "$dst"/arch/*; do
+    [[ "$arch" == */x86 ]] && continue
+    run_cmd rm -rf "$arch"
+  done
+
+  # remover documentação pesada
+  run_cmd rm -rf "$dst/Documentation"
+
+  # remover objetos de build
+  find "$dst" -type f -name '*.o' -delete
+
+  # remover symlinks quebrados
+  find -L "$dst" -type l -delete
+
+  # strip em ferramentas
+  print_step "Stripando ferramentas"
+
+  while IFS= read -r -d '' f; do
+    case "$(file -Sib "$f")" in
+      application/x-executable*|application/x-sharedlib*)
+        strip "$f"
+      ;;
+    esac
+  done < <(find "$dst" -type f -perm -u+x ! -name vmlinux -print0)
+
+  # symlink final
+  print_step "Criando symlink"
+
+  mkdir -p "$pkgdir_headers/usr/src"
+  run_cmd ln -sfr "$dst" "$pkgdir_headers/usr/src/$pkgbase_headers"
+
+  # remover lixo
+  find "$dst" -name ".gitignore" -delete
+
+  print_done "Headers instalados" $((SECONDS - start))
+  PREFIX=""
 }
 
 slim_modules() {
@@ -702,6 +976,43 @@ install_docs() {
 	print_step "Docs copiados para $docdst"
 
 	print_done "Docs instalados" $((SECONDS - start))
+}
+
+sh_create_initramfs() {
+	case $distro in
+	arch)
+		create_mkinitcpio_preset
+		;;
+	void)
+		create_dracut_config
+		create_void_trigger
+		;;
+	esac
+}
+
+create_dracut_config() {
+	local dracutdir="$pkgdir_kernel/etc/dracut.conf.d"
+	local cfg="$dracutdir/chili.conf"
+
+	mkdir -p "$dracutdir"
+
+	cat <<EOF >"$cfg"
+hostonly=yes
+compress="zstd"
+EOF
+}
+
+create_void_trigger() {
+	local trig="$pkgdir_kernel/usr/libexec/xbps-triggers/kernel"
+
+	mkdir -p "$(dirname "$trig")"
+
+	cat <<EOF >"$trig"
+#!/bin/sh
+dracut --force --kver $version
+EOF
+
+	chmod +x "$trig"
 }
 
 create_mkinitcpio_preset() {
@@ -932,7 +1243,7 @@ sh_checkroot() {
 
 elevate_to_root() {
 	print_ok "This script must be run as root. Elevating privileges..."
-	ccabec+='root [elevated]'
+	CCABEC+='root [elevated]'
 	# Tenta usar sudo primeiro (caso esteja configurado)
 	if command -v sudo >/dev/null 2>&1; then
 		exec sudo bash "$0" "$@"
@@ -947,12 +1258,29 @@ elevate_to_root() {
 # uso dentro do app:
 #run_as_root cp arquivo /opt/meuapp/
 run_as_root() {
-  if [[ $EUID -eq 0 ]]; then
+	if [[ $EUID -eq 0 ]]; then
 		"$@"
 	else
 		pkexec "$@"
 	fi
 }
+
+get_distro() {
+	if [[ -f /etc/os-release ]]; then
+		. /etc/os-release
+		DISTRO="$ID"
+	else
+		DISTRO="unknown"
+	fi
+	echo "$DISTRO"
+}
+
+distro="$(get_distro)"
+CCABEC+="${GREEN} - running on $distro"
+
+if ! choose_options; then die "Cancelled!"; fi
+set -- "${GLOBAL_OPTS[@]}" # definido em choose_options()
+echo "$@"
 
 # ======================
 # Parse parameters
@@ -963,12 +1291,12 @@ while [[ $# -gt 0 ]]; do
 	--verbose) VERBOSE=true ;;
 	--no-prepare) DO_PREPARE=false ;;
 	--no-build) DO_BUILD=false ;;
-	--no-build-docs) DO_BUILD=false ;;
+	--no-build-docs) DO_BUILD_DOCS=false ;;
 	--no-kernel) DO_INSTALL_KERNEL=false ;;
 	--no-headers) DO_INSTALL_HEADERS=false ;;
 	--no-slim) DO_SLIM_MODULES=false ;;
 	--no-docs) DO_INSTALL_DOCS=false ;;
-	--no-mkinitcpio) DO_CREATE_MKINITCPIO=false ;;
+	--no-initramfs) DO_CREATE_INITRAMFS=false ;;
 	--no-hook) DO_CREATE_HOOK=false ;;
 	--no-package) DO_PACKAGE=false ;;
 	-h | --help) usage ;;
@@ -995,14 +1323,15 @@ rundir+='/chili-make-kernel/build'
 mkdir -p "$rundir"
 pushd "${rundir}" || die
 
-uname_r=$(uname -r)
-kconfig="config-${uname_r%_*}-custom"
-if [[ ! -e "$kconfig" ]]; then
-	zcat /proc/config.gz >"$rundir/$kconfig"
-fi
+#uname_r=$(uname -r)
+#kconfig="config-${uname_r%_*}-custom"
+#if [[ ! -e "$kconfig" ]]; then
+#	zcat /proc/config.gz >"$rundir/$kconfig"
+#fi
 
-if ! choose_config; then die "Cancelled!"; fi
+if ! choose_kernel; then die "Cancelled!"; fi
 if ! choose_version_type; then die "Cancelled!"; fi
+
 pkgbase="linux-$version"
 pkgbase_headers="linux-headers-$version"
 ARCH="x86_64"
@@ -1020,16 +1349,16 @@ mkdir -p "$builddir" "$pkgdir_kernel" "$pkgdir_headers" "$pkgdir_docs"
 # ======================
 # Fluxo principal
 # ======================
-[[ $DO_PREPARE ]] && prepare
-[[ $DO_BUILD ]] && build
-[[ $DO_BUILD_DOCS ]] && build_docs
-[[ $DO_INSTALL_KERNEL ]] && install_kernel
-[[ $DO_INSTALL_HEADERS ]] && install_headers
-[[ $DO_SLIM_MODULES ]] && slim_modules
-[[ $DO_INSTALL_DOCS ]] && install_docs
-[[ $DO_CREATE_MKINITCPIO ]] && create_mkinitcpio_preset
-[[ $DO_CREATE_HOOK ]] && create_hook
-[[ $DO_PACKAGE ]] && install_package
+$DO_PREPARE && prepare
+$DO_BUILD && build
+$DO_BUILD_DOCS && build_docs
+$DO_INSTALL_KERNEL && install_kernel
+$DO_INSTALL_HEADERS && install_headers
+$DO_SLIM_MODULES && slim_modules
+$DO_INSTALL_DOCS && install_docs
+$DO_CREATE_INITRAMFS && sh_create_initramfs
+$DO_CREATE_HOOK && create_hook
+$DO_PACKAGE && install_package
 
 PREFIX="[FINAL]"
 print_msg "Kernel $version ($pkgbase) buildado e instalado" "$(print_elapsed)" "${azul}"
