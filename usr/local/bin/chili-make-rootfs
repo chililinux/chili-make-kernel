@@ -1,0 +1,24 @@
+# 1. Preparar
+ROOTFS="$PWD/rootfs"
+BUSYBOX_BIN=$(which busybox.static)
+
+rm -rf "$ROOTFS"
+mkdir -p "$ROOTFS"/{bin,dev,etc,proc,sys}
+
+# 2. Instalar Busybox
+cp "$BUSYBOX_BIN" "$ROOTFS/bin/busybox"
+chmod +x "$ROOTFS/bin/busybox"
+
+# 3. CRIAR O INIT COMO BINÁRIO (Elimina erro de script/shebang)
+# Em vez de um script, o próprio busybox será o /init
+cp "$BUSYBOX_BIN" "$ROOTFS/init"
+chmod +x "$ROOTFS/init"
+
+# 4. Links básicos
+cd "$ROOTFS"
+./bin/busybox --install -s bin/
+ln -sf bin/busybox sh
+
+# 5. Gerar initrd.img
+find . | cpio -o -H newc > ../initrd.img
+cd ..

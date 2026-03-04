@@ -265,8 +265,8 @@ choose_kernel() {
 	esac
 
 	MOD_KERNEL="$xconfig"
-  make_config "$MOD_KERNEL"
-  if ! choose_config; then die "Cancelled!"; fi
+	make_config "$MOD_KERNEL"
+	if ! choose_config; then die "Cancelled!"; fi
 }
 
 choose_options() {
@@ -437,30 +437,30 @@ choose_kernel_tarball() {
 }
 
 make_config() {
-  local modelo="$1"
+	local modelo="$1"
 
-  case $modelo in
-    config_atual)
-      uname_r=$(uname -r)
-      kconfig="config-${uname_r%_*}-custom"
-      if [[ ! -e "$rundir/$kconfig" ]]; then
-        zcat /proc/config.gz >"$rundir/$kconfig"
-      fi
-    ;;
-    *)
-      choose_kernel_tarball
-      kconfig="config-$version-$modelo"
-      touch "$kconfig"
-    ;;
-  esac
+	case $modelo in
+	config_atual)
+		uname_r=$(uname -r)
+		kconfig="config-${uname_r%_*}-custom"
+		if [[ ! -e "$rundir/$kconfig" ]]; then
+			zcat /proc/config.gz >"$rundir/$kconfig"
+		fi
+		;;
+	*)
+		choose_kernel_tarball
+		kconfig="config-$version-$modelo"
+		touch "$kconfig"
+		;;
+	esac
 }
 
 make_config_atual() {
-  uname_r=$(uname -r)
-  kconfig="config-${uname_r%_*}-custom"
-  if [[ ! -e "$rundir/$kconfig" ]]; then
-    zcat /proc/config.gz >"$rundir/$kconfig"
-  fi
+	uname_r=$(uname -r)
+	kconfig="config-${uname_r%_*}-custom"
+	if [[ ! -e "$rundir/$kconfig" ]]; then
+		zcat /proc/config.gz >"$rundir/$kconfig"
+	fi
 }
 
 choose_version_type() {
@@ -634,41 +634,96 @@ prepare() {
 		exit 1
 	}
 
-  case $MOD_KERNEL in
-  alldefconfig)
-	  print_step "Running make alldefconfig"
-  	run_cmd make -j"$(nproc)" mrproper
-  	run_cmd make -j"$(nproc)" alldefconfig
-  	cp .config "$kernel_config"
-  	print_step "Copied .config to $kernel_config"
-  	;;
-  defconfig)
-	  print_step "Running make defconfig"
-  	run_cmd make defconfig
-  	cp .config "$kernel_config"
-  	print_step "Copied .config to $kernel_config"
-  	;;
-  localyesconfig)
-	  print_step "Running make localyesconfig"
-	  run_cmd make olddefconfig
-	  run_cmd make localyesconfig
-  	cp .config "$kernel_config"
-  	print_step "Copied .config to $kernel_config"
-  	;;
-  config_customizado|config_atual)
-  	cp "$kernel_config" .config
-  	print_step "Copied .config from $kernel_config"
-	  print_step "Running make olddefconfig"
-  	run_cmd make olddefconfig
-  	#cd "$builddir/$srcname"
-  	#fix_kernel_doc
-    ;;
-  esac
+	case $MOD_KERNEL in
+	alldefconfig)
+		print_step "Running make alldefconfig"
+		run_cmd make -j"$(nproc)" mrproper
+		run_cmd make -j"$(nproc)" alldefconfig
+		cp .config "$kernel_config"
+		print_step "Copied .config to $kernel_config"
+		;;
+	defconfig)
+		print_step "Running make defconfig"
+		run_cmd make defconfig
+		cp .config "$kernel_config"
+		print_step "Copied .config to $kernel_config"
+		;;
+	localyesconfig)
+		print_step "Running make localyesconfig"
+		run_cmd make olddefconfig
+		run_cmd make localyesconfig
+		cp .config "$kernel_config"
+		print_step "Copied .config to $kernel_config"
+		;;
+	config_customizado | config_atual)
+		cp "$kernel_config" .config
+		print_step "Copied .config from $kernel_config"
+		print_step "Running make olddefconfig"
+		run_cmd make olddefconfig
+		#cd "$builddir/$srcname"
+		#fix_kernel_doc
+		;;
+	esac
 
 	cd "$builddir/$srcname"
 	patch_zram_block_shift
 
 	print_done "Kernel preparado" $((SECONDS - start))
+}
+
+fix_kernel_config() {
+	local start=$SECONDS
+
+	PREFIX="[CONFIG]"
+
+	print_title "Ajustando configuração do kernel" "1 min"
+	run_cmd scripts/config --enable CONFIG_BLK_DEV_INITRD
+  run_cmd scripts/config --set-str CONFIG_INITRAMFS_SOURCE ""
+	run_cmd scripts/config --enable CONFIG_RD_GZIP
+	run_cmd scripts/config --enable CONFIG_RD_BZIP2
+	run_cmd scripts/config --enable CONFIG_RD_LZMA
+	run_cmd scripts/config --enable CONFIG_RD_XZ
+	run_cmd scripts/config --enable CONFIG_RD_LZO
+	run_cmd scripts/config --enable CONFIG_RD_LZ4
+	run_cmd scripts/config --enable CONFIG_RD_ZSTD
+	run_cmd scripts/config --enable ACPI_TABLE_UPGRADE
+
+	run_cmd scripts/config --enable CONFIG_INITRAMFS_PRESERVE_MTIME
+
+	run_cmd scripts/config --enable CONFIG_EXT4_FS
+	run_cmd scripts/config --enable CONFIG_EXT4_USE_FOR_EXT2
+	run_cmd scripts/config --enable CONFIG_EXT4_FS_POSIX_ACL
+	run_cmd scripts/config --enable CONFIG_EXT4_FS_SECURITY
+	run_cmd scripts/config --enable CONFIG_EXT4_DEBUG
+
+	run_cmd scripts/config --enable CONFIG_JBD2
+	run_cmd scripts/config --enable CONFIG_JBD2_DEBUG
+
+	run_cmd scripts/config --enable CONFIG_DEVTMPFS
+	run_cmd scripts/config --enable CONFIG_DEVTMPFS_MOUNT
+	run_cmd scripts/config --enable CONFIG_DEVTMPFS_SAFE
+
+	run_cmd scripts/config --enable CONFIG_XZ_DEC
+	run_cmd scripts/config --enable CONFIG_XZ_DEC_MICROLZMA
+	run_cmd scripts/config --enable CONFIG_XZ_DEC_TEST
+
+	print_step "Habilitando suporte a initramfs"
+	run_cmd scripts/config --enable CONFIG_BLK_DEV_INITRD
+	run_cmd scripts/config --enable BLK_DEV_INITRD
+
+	print_step "Habilitando suporte a ext4"
+	run_cmd scripts/config --enable CONFIG_EXT4_FS
+	run_cmd scripts/config --enable CONFIG_EXT4_USE_FOR_EXT2
+	run_cmd scripts/config --enable CONFIG_JBD2
+	run_cmd scripts/config --enable CONFIG_VIRTIO_BLK
+	run_cmd scripts/config --enable CONFIG_DEVTMPFS
+	run_cmd scripts/config --enable CONFIG_DEVTMPFS_MOUNT
+	run_cmd scripts/config --enable CONFIG_VIRTIO
+	run_cmd scripts/config --enable CONFIG_VIRTIO_BLK
+	run_cmd scripts/config --enable CONFIG_VIRTIO_PCI
+
+	print_done "Configuração atualizada" $((SECONDS - start))
+	PREFIX=""
 }
 
 build() {
@@ -677,20 +732,22 @@ build() {
 	PREFIX='[BUILD]'
 	cd "$builddir/$srcname"
 
+	fix_kernel_config
+
 	print_title "Compilando kernel e módulos ($ARCH)" "30 min"
 	#	run_cmd make -j"$(nproc)" ARCH="$ARCH" all
-  #	run_cmd make -j"$(nproc)" all
+	#	run_cmd make -j"$(nproc)" all
 	run_cmd make -j"$(nproc)" bzImage modules
 	print_done "Kernel e módulos compilados" $((SECONDS - start))
 
 	local start_bpf=$SECONDS
 	print_title "Gerando headers BPF CO-RE" "2 min"
 	#	run_cmd make -C tools/bpf/bpftool ARCH="$ARCH" vmlinux.h feature-clang-bpf-co-re=1
-  if grep -q '^CONFIG_DEBUG_INFO_BTF=y' .config; then
-    run_cmd make -C tools/bpf/bpftool vmlinux.h feature-clang-bpf-co-re=1
-  else
-    print_step "[BUILD] BTF não disponível, pulando geração do vmlinux.h"
-  fi
+	if grep -q '^CONFIG_DEBUG_INFO_BTF=y' .config; then
+		run_cmd make -C tools/bpf/bpftool vmlinux.h feature-clang-bpf-co-re=1
+	else
+		print_step "[BUILD] BTF não disponível, pulando geração do vmlinux.h"
+	fi
 	print_done "BPF headers gerados" $((SECONDS - start_bpf))
 }
 
@@ -745,173 +802,175 @@ install_kernel() {
 }
 
 install_headers() {
-  case $distro in
-  void) install_headers_void;;
-  *) install_headers_generic;;
-  esac
+	case $distro in
+	void) install_headers_void ;;
+	*) install_headers_generic ;;
+	esac
 }
 
 install_headers_void() {
-  local start=$SECONDS
-  local src="$builddir/$srcname"
-  local dst="$pkgdir_headers/usr/lib/modules/$version/build"
+	local start=$SECONDS
+	local src="$builddir/$srcname"
+	local dst="$pkgdir_headers/usr/lib/modules/$version/build"
 
-  PREFIX="[HEADERS]"
+	PREFIX="[HEADERS]"
 
-  run_cmd rm -rf "$pkgdir_headers"
-  run_cmd mkdir -p "$dst"
+	run_cmd rm -rf "$pkgdir_headers"
+	run_cmd mkdir -p "$dst"
 
-  print_title "Instalando linux-headers (Void style)" "2 min"
+	print_title "Instalando linux-headers (Void style)" "2 min"
 
-  cd "$src"
+	cd "$src"
 
-  # prepara árvore para módulos externos
-  print_step "Executando modules_prepare"
-  run_cmd make modules_prepare
+	# prepara árvore para módulos externos
+	print_step "Executando modules_prepare"
+	run_cmd make modules_prepare
 
-  # copia árvore essencial
-  print_step "Copiando árvore de headers"
+	# copia árvore essencial
+	print_step "Copiando árvore de headers"
 
-  (cd "$src" && tar cf - \
-    Makefile \
-    .config \
-    System.map \
-    include \
-    scripts \
-    arch/x86 \
-  ) | (cd "$dst" && tar xf -)
+	(
+		cd "$src" && tar cf - \
+			Makefile \
+			.config \
+			System.map \
+			include \
+			scripts \
+			arch/x86
+	) | (cd "$dst" && tar xf -)
 
-  # arquivos opcionais
-  print_step "Copiando arquivos opcionais"
+	# arquivos opcionais
+	print_step "Copiando arquivos opcionais"
 
-  [ -f Module.symvers ] && cp -a Module.symvers "$dst/"
-  [ -f vmlinux ] && cp -a vmlinux "$dst/"
+	[ -f Module.symvers ] && cp -a Module.symvers "$dst/"
+	[ -f vmlinux ] && cp -a vmlinux "$dst/"
 
-  # remove arquiteturas não usadas
-  print_step "Removendo arquiteturas desnecessárias"
+	# remove arquiteturas não usadas
+	print_step "Removendo arquiteturas desnecessárias"
 
-  find "$dst/arch" -mindepth 1 -maxdepth 1 ! -name x86 -exec rm -rf {} +
+	find "$dst/arch" -mindepth 1 -maxdepth 1 ! -name x86 -exec rm -rf {} +
 
-  # remove documentação
-  run_cmd rm -rf "$dst/Documentation"
+	# remove documentação
+	run_cmd rm -rf "$dst/Documentation"
 
-  # remove objetos temporários
-  find "$dst" -name '*.o' -delete
+	# remove objetos temporários
+	find "$dst" -name '*.o' -delete
 
-  # remove symlinks quebrados
-  find -L "$dst" -type l -delete
+	# remove symlinks quebrados
+	find -L "$dst" -type l -delete
 
-  # cria symlink padrão
-  print_step "Criando symlink em /usr/src"
+	# cria symlink padrão
+	print_step "Criando symlink em /usr/src"
 
-  mkdir -p "$pkgdir_headers/usr/src"
-  run_cmd ln -sfr "$dst" "$pkgdir_headers/usr/src/linux-$version"
+	mkdir -p "$pkgdir_headers/usr/src"
+	run_cmd ln -sfr "$dst" "$pkgdir_headers/usr/src/linux-$version"
 
-  print_done "Headers instalados (Void style)" $((SECONDS - start))
-  PREFIX=""
+	print_done "Headers instalados (Void style)" $((SECONDS - start))
+	PREFIX=""
 }
 
 install_headers_generic() {
-  local start=$SECONDS
-  local src="$builddir/$srcname"
-  local dst="$pkgdir_headers/usr/lib/modules/$version/build"
+	local start=$SECONDS
+	local src="$builddir/$srcname"
+	local dst="$pkgdir_headers/usr/lib/modules/$version/build"
 
-  PREFIX="[HEADERS]"
+	PREFIX="[HEADERS]"
 
-  run_cmd sudo rm -rfv "$pkgdir_headers"
-  run_cmd mkdir -p "$dst"
+	run_cmd sudo rm -rfv "$pkgdir_headers"
+	run_cmd mkdir -p "$dst"
 
-  print_title "Instalando headers e scripts de build" "5 min"
+	print_title "Instalando headers e scripts de build" "5 min"
 
-  cd "$src"
+	cd "$src"
 
-  # prepara árvore para módulos externos
-  print_step "Executando modules_prepare"
-  run_cmd make modules_prepare
+	# prepara árvore para módulos externos
+	print_step "Executando modules_prepare"
+	run_cmd make modules_prepare
 
-  # copia árvore principal (rápido e preserva tudo)
-  print_step "Copiando árvore de headers"
+	# copia árvore principal (rápido e preserva tudo)
+	print_step "Copiando árvore de headers"
 
-  (cd "$src" && tar cf - \
-    Makefile \
-    .config \
-    System.map \
-    include \
-    scripts \
-    arch \
-  ) | (cd "$dst" && tar xf -)
+	(
+		cd "$src" && tar cf - \
+			Makefile \
+			.config \
+			System.map \
+			include \
+			scripts \
+			arch
+	) | (cd "$dst" && tar xf -)
 
-  # arquivos opcionais
-  print_step "Instalando arquivos opcionais"
+	# arquivos opcionais
+	print_step "Instalando arquivos opcionais"
 
-  [ -f Module.symvers ] && \
-    run_cmd install -Dm644 Module.symvers "$dst/Module.symvers"
+	[ -f Module.symvers ] &&
+		run_cmd install -Dm644 Module.symvers "$dst/Module.symvers"
 
-  [ -f vmlinux ] && \
-    run_cmd install -Dm644 vmlinux "$dst/vmlinux"
+	[ -f vmlinux ] &&
+		run_cmd install -Dm644 vmlinux "$dst/vmlinux"
 
-  [ -f tools/bpf/bpftool/vmlinux.h ] && \
-    run_cmd install -Dm644 tools/bpf/bpftool/vmlinux.h "$dst/vmlinux.h"
+	[ -f tools/bpf/bpftool/vmlinux.h ] &&
+		run_cmd install -Dm644 tools/bpf/bpftool/vmlinux.h "$dst/vmlinux.h"
 
-  # ferramentas usadas por módulos externos
-  print_step "Instalando ferramentas"
+	# ferramentas usadas por módulos externos
+	print_step "Instalando ferramentas"
 
-  if [ -f tools/objtool/objtool ]; then
-    run_cmd install -Dm755 tools/objtool/objtool \
-      "$dst/tools/objtool/objtool"
-  fi
+	if [ -f tools/objtool/objtool ]; then
+		run_cmd install -Dm755 tools/objtool/objtool \
+			"$dst/tools/objtool/objtool"
+	fi
 
-  if [ -f tools/bpf/resolve_btfids/resolve_btfids ]; then
-    run_cmd install -Dm755 tools/bpf/resolve_btfids/resolve_btfids \
-      "$dst/tools/bpf/resolve_btfids/resolve_btfids"
-  fi
+	if [ -f tools/bpf/resolve_btfids/resolve_btfids ]; then
+		run_cmd install -Dm755 tools/bpf/resolve_btfids/resolve_btfids \
+			"$dst/tools/bpf/resolve_btfids/resolve_btfids"
+	fi
 
-  # vdso (compatível com kernels antigos)
-  if make -q vdso_install 2>/dev/null; then
-    print_step "Instalando VDSO"
-    run_cmd make INSTALL_MOD_PATH="$pkgdir_headers/usr" vdso_install link=
-  fi
+	# vdso (compatível com kernels antigos)
+	if make -q vdso_install 2>/dev/null; then
+		print_step "Instalando VDSO"
+		run_cmd make INSTALL_MOD_PATH="$pkgdir_headers/usr" vdso_install link=
+	fi
 
-  # remover arquiteturas não usadas
-  print_step "Removendo arquiteturas desnecessárias"
+	# remover arquiteturas não usadas
+	print_step "Removendo arquiteturas desnecessárias"
 
-  local arch
-  for arch in "$dst"/arch/*; do
-    [[ "$arch" == */x86 ]] && continue
-    run_cmd rm -rf "$arch"
-  done
+	local arch
+	for arch in "$dst"/arch/*; do
+		[[ "$arch" == */x86 ]] && continue
+		run_cmd rm -rf "$arch"
+	done
 
-  # remover documentação pesada
-  run_cmd rm -rf "$dst/Documentation"
+	# remover documentação pesada
+	run_cmd rm -rf "$dst/Documentation"
 
-  # remover objetos de build
-  find "$dst" -type f -name '*.o' -delete
+	# remover objetos de build
+	find "$dst" -type f -name '*.o' -delete
 
-  # remover symlinks quebrados
-  find -L "$dst" -type l -delete
+	# remover symlinks quebrados
+	find -L "$dst" -type l -delete
 
-  # strip em ferramentas
-  print_step "Stripando ferramentas"
+	# strip em ferramentas
+	print_step "Stripando ferramentas"
 
-  while IFS= read -r -d '' f; do
-    case "$(file -Sib "$f")" in
-      application/x-executable*|application/x-sharedlib*)
-        strip "$f"
-      ;;
-    esac
-  done < <(find "$dst" -type f -perm -u+x ! -name vmlinux -print0)
+	while IFS= read -r -d '' f; do
+		case "$(file -Sib "$f")" in
+		application/x-executable* | application/x-sharedlib*)
+			strip "$f"
+			;;
+		esac
+	done < <(find "$dst" -type f -perm -u+x ! -name vmlinux -print0)
 
-  # symlink final
-  print_step "Criando symlink"
+	# symlink final
+	print_step "Criando symlink"
 
-  mkdir -p "$pkgdir_headers/usr/src"
-  run_cmd ln -sfr "$dst" "$pkgdir_headers/usr/src/$pkgbase_headers"
+	mkdir -p "$pkgdir_headers/usr/src"
+	run_cmd ln -sfr "$dst" "$pkgdir_headers/usr/src/$pkgbase_headers"
 
-  # remover lixo
-  find "$dst" -name ".gitignore" -delete
+	# remover lixo
+	find "$dst" -name ".gitignore" -delete
 
-  print_done "Headers instalados" $((SECONDS - start))
-  PREFIX=""
+	print_done "Headers instalados" $((SECONDS - start))
+	PREFIX=""
 }
 
 slim_modules() {
