@@ -235,6 +235,44 @@ lenarraystr() {
 	echo "${#ADDR[@]}"
 }
 
+run_kernel() {
+qemu-system-x86_64 \
+  -enable-kvm \
+  -cpu host \
+  -smp $(nproc) \
+  -m 2G \
+  -kernel arch/x86/boot/bzImage \
+  -initrd initrd.img
+}
+
+choose_setup() {
+	local sep="\xe2\x94\x82"
+	local sep="$(printf "$sep")"
+	local xconfig
+
+	xconfig=$(dialog \
+		--colors \
+		--stdout \
+		--backtitle "$CCABEC" \
+		--title " == SETUP ==" \
+		--menu "Escolha o que quer fazer:" 0 0 0 \
+		"Construir" "$sep Construir kernel" \
+		"Testar"     "$sep Testar Kernel construido")
+
+	exit_status=$?
+	case $exit_status in
+	"$D_ESC" | "$D_CANCEL")
+		return 1
+		;;
+	esac
+	SETUP_KERNEL="$xconfig"
+	case $xconfig in
+	  'Testar') run_kernel
+	  choose_setup
+	  ;;
+	esac
+}
+
 choose_kernel() {
 	local sep="\xe2\x94\x82"
 	local sep="$(printf "$sep")"
@@ -1337,6 +1375,7 @@ get_distro() {
 distro="$(get_distro)"
 CCABEC+="${GREEN} - running on $distro"
 
+choose_setup
 if ! choose_options; then die "Cancelled!"; fi
 set -- "${GLOBAL_OPTS[@]}" # definido em choose_options()
 echo "$@"
