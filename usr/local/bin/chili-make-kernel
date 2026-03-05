@@ -236,13 +236,17 @@ lenarraystr() {
 }
 
 run_kernel() {
-qemu-system-x86_64 \
-  -enable-kvm \
-  -cpu host \
-  -smp $(nproc) \
-  -m 2G \
-  -kernel arch/x86/boot/bzImage \
-  -initrd initrd.img
+	local bz="$1"
+
+  pushd "$rundir"
+	qemu-system-x86_64 \
+		-enable-kvm \
+		-cpu host \
+		-smp $(nproc) \
+		-m 2G \
+		-kernel "$bz" \
+		-initrd "$rundir"/initrd.img
+  popd
 }
 
 choose_setup() {
@@ -257,7 +261,7 @@ choose_setup() {
 		--title " == SETUP ==" \
 		--menu "Escolha o que quer fazer:" 0 0 0 \
 		"Construir" "$sep Construir kernel" \
-		"Testar"     "$sep Testar Kernel construido")
+		"Testar" "$sep Testar Kernel construido")
 
 	exit_status=$?
 	case $exit_status in
@@ -266,10 +270,10 @@ choose_setup() {
 		;;
 	esac
 	SETUP_KERNEL="$xconfig"
-	case $xconfig in
-	  'Testar') run_kernel
-	  choose_setup
-	  ;;
+	case "$xconfig" in
+  	Testar) choose_bzImage
+  	choose_setup
+    ;;
 	esac
 }
 
@@ -438,6 +442,61 @@ choose_config() {
 	echo "${version}"
 }
 
+choose_bzImage() {
+  local array=()
+  local ARRAY=()
+  local sep="\xe2\x94\x82"
+  local xconfig
+  local bz
+
+  mapfile -t ARRAY < <(find . -type f -iname 'bzImage')
+  if ((${#ARRAY[@]} == 0)); then
+    die "Nenhum bzImage de kernel encontrado"
+  fi
+
+  for key in "${ARRAY[@]}"; do
+    path=${key#./}
+    if [[ $path == build-* ]]; then
+      tmp=${path#build-linux-}
+      versao=${tmp%%/linux-*}
+
+      # TAG -> versao
+      # DESCRICAO -> path do bzImage
+      array+=("$versao" "$(printf "%b %s" "$sep" "$key")")
+    fi
+  done
+
+  while : ; do
+  xconfig=$(dialog \
+    --default-item '' \
+    --backtitle "$CCABEC" \
+    --title "== IMAGEM DE KERNEL ==" \
+    --stdout \
+    --colors \
+    --menu "bzImage de Kernel's in $PWD" \
+    20 0 100 \
+    "${array[@]}")
+
+  exit_status=$?
+  case $exit_status in
+    "$D_ESC" | "$D_CANCEL")
+      return 1
+      ;;
+  esac
+
+  # encontra o item escolhido
+  for ((i=0;i<${#array[@]};i+=2)); do
+    if [[ ${array[i]} == "$xconfig" ]]; then
+      bz="${array[i+1]}"
+      bz=${bz#"$sep "}
+      bz=${bz#*/}
+      break
+    fi
+  done
+  run_kernel "$bz"
+  done
+}
+
 choose_kernel_tarball() {
 	local array=()
 	local ARRAY=()
@@ -466,7 +525,7 @@ choose_kernel_tarball() {
 	exit_status=$?
 	case $exit_status in
 	"$D_ESC" | "$D_CANCEL")
-		return 1
+		return 0
 		;;
 	esac
 	version="${xconfig#linux-}"
@@ -716,7 +775,7 @@ fix_kernel_config() {
 
 	print_title "Ajustando configuração do kernel" "1 min"
 	run_cmd scripts/config --enable CONFIG_BLK_DEV_INITRD
-  run_cmd scripts/config --set-str CONFIG_INITRAMFS_SOURCE ""
+	run_cmd scripts/config --set-str CONFIG_INITRAMFS_SOURCE ""
 	run_cmd scripts/config --enable CONFIG_RD_GZIP
 	run_cmd scripts/config --enable CONFIG_RD_BZIP2
 	run_cmd scripts/config --enable CONFIG_RD_LZMA
@@ -1375,7 +1434,16 @@ get_distro() {
 distro="$(get_distro)"
 CCABEC+="${GREEN} - running on $distro"
 
-choose_setup
+rundir=''
+if ! choose_path; then die "Cancelled!"; fi
+if [ ! -w "$rundir" ]; then
+	elevate_to_root "$@"
+fi
+rundir+='/chili-make-kernel/build'
+mkdir -p "$rundir"
+pushd "${rundir}" || die
+
+if ! choose_setup; then die "Cancelled!"; fi
 if ! choose_options; then die "Cancelled!"; fi
 set -- "${GLOBAL_OPTS[@]}" # definido em choose_options()
 echo "$@"
@@ -1412,20 +1480,6 @@ done
 #version='6.12.43-lts-chili'
 #version=type='versioned'
 #versioned=true
-rundir=''
-if ! choose_path; then die "Cancelled!"; fi
-if [ ! -w "$rundir" ]; then
-	elevate_to_root "$@"
-fi
-rundir+='/chili-make-kernel/build'
-mkdir -p "$rundir"
-pushd "${rundir}" || die
-
-#uname_r=$(uname -r)
-#kconfig="config-${uname_r%_*}-custom"
-#if [[ ! -e "$kconfig" ]]; then
-#	zcat /proc/config.gz >"$rundir/$kconfig"
-#fi
 
 if ! choose_kernel; then die "Cancelled!"; fi
 if ! choose_version_type; then die "Cancelled!"; fi
